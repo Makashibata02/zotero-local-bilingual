@@ -1,0 +1,126 @@
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" xmlns:html="http://www.w3.org/1999/xhtml" onload="Zotero.LocalBilingual.preferences.onLoad(window.document)">
+<html:div id="zlb-settings">
+<html:style>
+#zlb-settings {display:block;max-width:660px;width:100%;box-sizing:border-box;padding:0 14px 24px 0;font-size:14px;}
+#zlb-settings .zlb-field {display:flex;flex-direction:column;gap:6px;margin:16px 0;}
+#zlb-settings label {font-weight:600;}
+#zlb-settings input,#zlb-settings select,#zlb-settings textarea {box-sizing:border-box;display:block;width:100%;padding:8px;font:inherit;}
+#zlb-settings input[type="checkbox"] {display:inline-block;width:auto;}
+#zlb-settings button {padding:8px 12px;font:inherit;}
+#zlb-settings textarea {min-height:100px;resize:vertical;}
+#zlb-settings p {line-height:1.55;}
+#zlb-settings .feedback {white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 16px;min-height:1.5em;}
+#zlb-settings [hidden] {display:none !important;}
+#zlb-settings details {margin-top:22px;border-top:1px solid #999;padding-top:12px;}
+#zlb-settings summary {cursor:pointer;font-weight:bold;}
+#zlb-settings .zlb-hint {font-size:0.92em;opacity:0.85;}
+#zlb-settings .engine-setup {margin:16px 0 22px;padding:14px;border:1px solid #a9b7c8;border-radius:8px;}
+#zlb-settings .engine-setup h3 {margin:0 0 8px;font-size:1.05em;}
+#zlb-settings .engine-choices {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+#zlb-settings .engine-choice {min-width:0;padding:12px;border:1px solid #b8c4d2;border-radius:6px;}
+#zlb-settings .engine-choice h4 {margin:0 0 8px;}
+#zlb-settings .engine-choice p {margin:6px 0;}
+#zlb-settings .engine-choice button {max-width:100%;white-space:normal;}
+@media (max-width:540px) {#zlb-settings .engine-choices {grid-template-columns:1fr;}}
+</html:style>
+<html:p id="zlb-version"></html:p><html:p id="zlb-runtime-version" class="zlb-hint"></html:p>
+<html:section id="zlb-engine-setup" class="engine-setup" aria-labelledby="zlb-engine-heading">
+<html:h3 id="zlb-engine-heading">安装翻译引擎</html:h3>
+<html:p class="zlb-hint">先选择在线下载或离线导入，再配置翻译服务。引擎约 415 MB；安装只准备本机环境，不调用翻译模型，也不需要 GitHub Token。</html:p>
+<html:div class="engine-choices">
+<html:div class="engine-choice">
+<html:h4>在线下载（推荐）</html:h4>
+<html:p class="zlb-hint">直接从项目的 GitHub Release 下载匹配版本，显示进度并校验 SHA-256。已安装时直接启动。</html:p>
+<html:button id="zlb-download-engine-button" type="button" onclick="Zotero.LocalBilingual.preferences.downloadEngine(window.document)">在线下载并安装</html:button>
+<html:p id="zlb-online-install-status" class="feedback" role="status" aria-live="polite"></html:p>
+</html:div>
+<html:div class="engine-choice">
+<html:h4>离线导入</html:h4>
+<html:p class="zlb-hint">GitHub 无法直连时，选择提前取得的匹配引擎 ZIP；无需 Python、uv 或命令行。</html:p>
+<html:button id="zlb-import-engine-button" type="button" onclick="Zotero.LocalBilingual.preferences.importEngine(window.document)">选择离线 ZIP 并安装</html:button>
+<html:p id="zlb-install-status" class="feedback" role="status" aria-live="polite"></html:p>
+</html:div>
+</html:div>
+<html:button id="zlb-release-page-button" type="button" onclick="Zotero.LocalBilingual.preferences.openEngineRelease(window.document)">打开 GitHub 下载页</html:button>
+<html:p id="zlb-release-page-status" class="feedback" role="status" aria-live="polite"></html:p>
+<html:p class="zlb-hint">在线下载要求公开 Release；私有审阅阶段请登录 GitHub 下载 ZIP 并离线导入。未安装时测试或翻译也会尝试在线准备，失败可改用离线入口。</html:p>
+</html:section>
+
+<html:div class="zlb-field"><html:label for="zlb-profile-select">已保存的模型配置（选择不调用模型）</html:label><html:select id="zlb-profile-select" onchange="Zotero.LocalBilingual.preferences.profileChanged(window.document)"></html:select></html:div>
+<html:div class="zlb-field"><html:label for="zlb-profile-name">配置名称</html:label><html:input id="zlb-profile-name" maxlength="100"/></html:div>
+<html:label><html:input id="zlb-save-new" type="checkbox"/> 另存为新配置（新配置需填写 Key）</html:label>
+<html:div class="zlb-field"><html:label for="zlb-provider">翻译服务</html:label>
+<html:select id="zlb-provider" onchange="Zotero.LocalBilingual.preferences.providerChanged(window.document)">
+<html:option value="bing">免费 Bing 网页翻译（实验性、免 Key）</html:option>
+<html:option value="tencent">免费腾讯交互翻译（实验性、免 Key）</html:option>
+<html:option value="deepseek">DeepSeek（自己的 API Key）</html:option>
+<html:option value="openai">自定义兼容 API（自己的 API Key）</html:option>
+</html:select></html:div>
+<html:p id="zlb-provider-hint" role="status" aria-live="polite"></html:p>
+<html:div id="zlb-api-fields">
+<html:div class="zlb-field"><html:label for="zlb-base-url">API 地址</html:label><html:input id="zlb-base-url" type="url" placeholder="https://api.example.com/v1"/></html:div>
+<html:div class="zlb-field"><html:label for="zlb-model">模型名称</html:label><html:input id="zlb-model"/></html:div>
+<html:div class="zlb-field"><html:label for="zlb-api-key">API Key（留空保留已保存的 Key）</html:label><html:input id="zlb-api-key" type="password" autocomplete="off"/><html:span class="zlb-hint">存入 Windows 凭据管理器，不写入插件配置。PDF 中需翻译的文本会发送给所选服务。</html:span></html:div>
+</html:div>
+<html:p id="zlb-test-cost" class="zlb-hint"></html:p>
+<html:button id="zlb-test-button" type="button" onclick="Zotero.LocalBilingual.preferences.saveAndTest(window.document)">保存并完整测试</html:button>
+<html:p id="zlb-test-status" class="feedback" role="status" aria-live="polite"></html:p>
+<html:button type="button" onclick="Zotero.LocalBilingual.preferences.openTestResult(window.document)">打开测试 PDF</html:button>
+<html:p id="zlb-open-test-status" class="feedback" role="status" aria-live="polite"></html:p>
+<html:button type="button" onclick="Zotero.LocalBilingual.preferences.showWorkbench(window.document)">打开任务工作台</html:button>
+<html:p id="zlb-workbench-open-status" class="feedback" role="status" aria-live="polite"></html:p>
+<html:p class="zlb-hint">首次部署使用一页 PDF 完整测试；部署成功后此按钮仅测试一次服务调用。右键 PDF 会先确认模型、语言、输出与排队设置。关闭工作台不会取消翻译。</html:p>
+<html:details><html:summary>高级选项：页码、术语、提示词、字体与用量保护</html:summary>
+      <html:div class="zlb-field"><html:label for="zlb-pages">页码（留空翻译全文）</html:label><html:input id="zlb-pages" placeholder="例如 1-3,8"/></html:div>
+      <html:div class="zlb-field">
+        <html:label for="zlb-thinking">思考模式</html:label>
+        <html:select id="zlb-thinking">
+          <html:option value="auto">自动：DeepSeek 官方关闭思考，其他服务沿用默认</html:option>
+          <html:option value="disabled">关闭（需支持 DeepSeek thinking 参数）</html:option>
+          <html:option value="enabled">开启（可能大幅增加耗时与输出费用）</html:option>
+          <html:option value="provider">沿用服务商默认</html:option>
+        </html:select>
+      </html:div>
+      <html:div class="zlb-field">
+        <html:label for="zlb-glossary"><html:input id="zlb-glossary" type="checkbox"/> 自动提取术语</html:label>
+        <html:span class="zlb-hint">默认关闭。开启会增加模型请求及费用，不保证恰好翻倍。</html:span>
+      </html:div>
+      <html:div class="zlb-field">
+        <html:label for="zlb-custom-prompt">补充翻译提示词／术语要求</html:label>
+        <html:textarea id="zlb-custom-prompt" rows="7" maxlength="8000" placeholder="例如：Rydberg atomic receiver 统一译为“里德堡原子接收机”；保留作者姓名。"></html:textarea>
+        <html:span class="zlb-hint">内置要求：正文完整忠实翻译，不摘要；参考文献条目及其标题保留原文，不翻译；保留数字、单位、公式占位符、标签和引用。不应在此要求改变 JSON 输出格式。</html:span>
+      </html:div>
+      <html:div class="zlb-field">
+        <html:label for="zlb-glossary-text">固定术语表（每行 英文=中文）</html:label>
+        <html:textarea id="zlb-glossary-text" rows="6" maxlength="20000" placeholder="spectral range=频谱范围&#10;optical interrogation=光学读出&#10;integrated sensing and communications=通感一体化"></html:textarea>
+        <html:span class="zlb-hint">只把当前段落匹配的术语加入翻译要求，无需额外提取请求；会少量增加输入 token。最多 200 条，不保证模型绝对遵从。</html:span>
+      </html:div>
+      <html:div class="zlb-field">
+        <html:label for="zlb-font-family">译文字体类别</html:label>
+        <html:select id="zlb-font-family">
+          <html:option value="serif">衬线（默认）</html:option>
+          <html:option value="sans-serif">无衬线</html:option>
+          <html:option value="script">书写体</html:option>
+        </html:select>
+      </html:div>
+      <html:div class="zlb-field">
+        <html:label for="zlb-disable-rich"><html:input id="zlb-disable-rich" type="checkbox"/> 简化段内富文本样式</html:label>
+        <html:span class="zlb-hint">默认关闭。仅在样式标记反复失败时尝试；段内粗斜体可能简化，公式仍由引擎保护。</html:span>
+      </html:div>
+      <html:div class="zlb-field">
+        <html:label for="zlb-max-tokens">单个任务累计 token 上限（输入＋输出）</html:label>
+        <html:input id="zlb-max-tokens" type="number" min="5000" max="2000000" step="1000"/>
+        <html:span class="zlb-hint">新任务默认 1000000 tokens，含请求前预留。达到上限会暂停，可确认追加额度；不是人民币硬预算。旧任务累计额度与上限保留。请求默认 1000 次；免费默认 2000 次／100 万字符。</html:span>
+      </html:div>
+      <html:div class="zlb-field">
+        <html:label for="zlb-max-requests">单个任务模型请求次数上限</html:label>
+        <html:input id="zlb-max-requests" type="number" min="1" max="5000"/>
+      </html:div>
+      <html:div class="zlb-field"><html:label for="zlb-free-requests">免费服务累计请求上限</html:label><html:input id="zlb-free-requests" type="number" min="1" max="5000"/></html:div>
+      <html:div class="zlb-field"><html:label for="zlb-max-characters">免费服务累计字符上限</html:label><html:input id="zlb-max-characters" type="number" min="1000" max="1000000"/></html:div>
+      <html:button type="button" onclick="Zotero.LocalBilingual.preferences.saveTranslationOptions(window.document)">保存高级选项（不调用翻译服务）</html:button>
+      <html:p id="zlb-options-status" class="feedback" role="status" aria-live="polite"></html:p>
+</html:details>
+
+<html:p class="zlb-hint">免费服务每次最多 800 字符、串行请求、至少间隔 2 秒，全文可能较慢；服务失效时手动切换。参考文献保留英文，原 PDF 附件批注暂不迁移。</html:p>
+</html:div></vbox>

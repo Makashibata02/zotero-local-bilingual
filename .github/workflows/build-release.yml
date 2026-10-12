@@ -1,0 +1,38 @@
+name: Build Windows release candidates
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.10'
+      - shell: pwsh
+        run: |
+          uv python install 3.12.14
+          uv sync --managed-python --python 3.12.14 --extra dev --locked
+          $env:ZLB_DATA_DIR = Join-Path $pwd 'output/ci-test-state'
+          uv run pytest -q
+          uv run python scripts/build_runtime.py --repository "${{ github.repository }}" --uv (Get-Command uv).Source
+          corepack enable
+          cd plugin
+          pnpm install --frozen-lockfile
+          pnpm run check
+          pnpm test
+          pnpm run build
+          cd ..
+          uv run python scripts/package_release.py --repository "${{ github.repository }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: local-bilingual-1.0.0-windows
+          path: dist/release-1.0.0/*
+          retention-days: 14
+# This builds candidates only. A maintainer reviews the artifacts before
+# publishing them in a GitHub Release tagged v1.0.0.

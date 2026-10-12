@@ -1,0 +1,14 @@
+name: Feature request / 功能建议
+description: Describe a user need and the desired behavior.
+title: "[Feature] "
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: User problem and desired outcome
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives

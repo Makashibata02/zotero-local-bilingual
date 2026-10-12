@@ -1,0 +1,23 @@
+name: Bug report / 问题反馈
+description: Report a reproducible problem without private documents or credentials.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "Do not attach API keys, tokens, databases, full logs, or private PDFs. Use a generated sample and sanitized screenshots."
+  - type: input
+    id: versions
+    attributes:
+      label: Zotero, plugin, runtime, Windows versions
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps and expected / actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized error or screenshot

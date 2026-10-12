@@ -1,0 +1,20 @@
+{
+  "manifest_version": 2,
+  "name": "Local Bilingual PDF",
+  "version": "1.0.0",
+  "description": "Create layout-preserving bilingual PDFs with a local service and your own API key.",
+  "author": "Local user",
+  "homepage_url": "https://github.com/Makashibata02/zotero-local-bilingual",
+  "icons": {
+    "48": "content/icon.svg",
+    "96": "content/icon.svg"
+  },
+  "applications": {
+    "zotero": {
+      "id": "local-bilingual@local.invalid",
+      "update_url": "https://github.com/Makashibata02/zotero-local-bilingual/releases/latest/download/updates.json",
+      "strict_min_version": "6.999",
+      "strict_max_version": "10.0.*"
+    }
+  }
+}

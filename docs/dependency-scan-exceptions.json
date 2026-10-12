@@ -1,0 +1,60 @@
+{
+  "entries": [
+    {
+      "path": "python/Lib/site-packages/cryptography/hazmat/bindings/_rust/openssl/hpke.pyi",
+      "line": 77,
+      "rule": "generic-api-key",
+      "sha256": "a7f8462e7e981fe11aac91755796d4b14b638a9be2100a5c4793b4b141c92ed7",
+      "reason": "Python type annotation naming the public X25519PrivateKey type; not a key value."
+    },
+    {
+      "path": "python/Lib/site-packages/cryptography/hazmat/bindings/_rust/openssl/hpke.pyi",
+      "line": 101,
+      "rule": "generic-api-key",
+      "sha256": "a7f8462e7e981fe11aac91755796d4b14b638a9be2100a5c4793b4b141c92ed7",
+      "reason": "Python type annotation naming the public X25519PrivateKey type; not a key value."
+    },
+    {
+      "path": "python/Lib/site-packages/huggingface_hub/_eval_results.py",
+      "line": 67,
+      "rule": "generic-api-key",
+      "sha256": "b682055e9f5cc2bc0e0abdb50bc5ae0d5fe8e7f58fd9987fd5d625917a2b92ef",
+      "reason": "Truncated JWT-shaped documentation placeholder ending in literal ellipsis."
+    },
+    {
+      "path": "python/Lib/site-packages/google/protobuf/descriptor_pb2.py",
+      "line": 34,
+      "rule": "generic-api-key",
+      "sha256": "3c01edd3fc6f21f4b368fdee5d6754e92c3f671629b4001ab2fa8d09adcd9587",
+      "reason": "Generated protobuf serialized descriptor data; not authentication credentials."
+    },
+    {
+      "path": "python/Lib/site-packages/huggingface_hub/constants.py",
+      "line": 331,
+      "rule": "generic-api-key",
+      "sha256": "7b846aeb03e6381c6143fe0026df84ef0465d83f43ea41dcc9ad65cfa09ee67c",
+      "reason": "Public OAuth device-flow client identifier; not a client secret or user token."
+    },
+    {
+      "path": "python/Lib/site-packages/huggingface_hub/cli/auth.py",
+      "line": 65,
+      "rule": "generic-api-key",
+      "sha256": "130efd33ad294cc0a74b57b02952b77ddf19c9f1eb3634443a6356b855f2dfb3",
+      "reason": "Function call with token variables and Boolean flags; no literal credential."
+    },
+    {
+      "path": "python/Lib/site-packages/onnx/reference/ops/aionnxml/op_dict_vectorizer.py",
+      "line": 42,
+      "rule": "generic-api-key",
+      "sha256": "8f8c6af51f63be7d94cb525688e528b66fec012724d3bae82642cfd21e6460ac",
+      "reason": "ONNX vocabulary variable expression; no credential."
+    },
+    {
+      "path": "python/Lib/site-packages/onnxruntime/tools/symbolic_shape_infer.py",
+      "line": 2203,
+      "rule": "generic-api-key",
+      "sha256": "0c9e5d57104c5b959e0f3f1d8d8667f11e505e71737ffbb059c2a02b17a1807a",
+      "reason": "ONNX INT64 enum used as a map-key type; no credential."
+    }
+  ]
+}

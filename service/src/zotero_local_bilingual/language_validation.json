@@ -1,0 +1,62 @@
+{
+  "bing": {
+    "zh-CN": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "zh-TW": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "ja": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "ko": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "fr": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "de": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "es": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    }
+  },
+  "tencent": {
+    "zh-CN": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "zh-TW": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "ja": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "ko": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "fr": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "de": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    },
+    "es": {
+      "supported": true,
+      "status": "本机直连短句＋一页 PDF 验收通过"
+    }
+  }
+}

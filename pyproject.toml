@@ -1,0 +1,36 @@
+[project]
+name = "zotero-local-bilingual"
+version = "1.0.0"
+description = "Local translation service for a Zotero bilingual PDF plugin"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "keyring>=25.6,<26",
+  "python-multipart>=0.0.20,<1",
+  "uvicorn>=0.35,<1",
+  "babeldoc==0.6.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.4,<9",
+  "pytest-asyncio>=1.1,<2",
+  "respx>=0.22,<1",
+]
+
+[project.scripts]
+zotero-local-bilingual = "zotero_local_bilingual.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["service/src/zotero_local_bilingual"]
+
+[tool.pytest.ini_options]
+testpaths = ["service/tests"]
+asyncio_mode = "auto"
