@@ -52,6 +52,9 @@ class ProfilePublic(BaseModel):
     no_send_temperature: bool
     reasoning: str | None
     has_api_key: bool
+    is_default: bool = False
+    can_delete: bool = True
+    delete_block_reason: str | None = None
 
 
 class TestResult(BaseModel):
@@ -119,6 +122,11 @@ class JobView(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    supports_idle_shutdown: bool = False
+    process_id: int = 0
+    shutdown_requested: bool = False
+    pending_jobs: int = 0
+    business_requests: int = 0
     deployment_verified: bool = False
     active_jobs: list[str] = Field(default_factory=list)
     max_parallel: int = 1

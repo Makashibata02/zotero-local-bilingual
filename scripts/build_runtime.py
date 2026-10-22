@@ -16,13 +16,68 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION = json.loads((ROOT / "plugin/addon/manifest.json").read_text("utf8"))["version"]
 
 
+def reuse_engine(base: Path, repository: str) -> None:
+    base = base.resolve()
+    original = json.loads((base.parent / "engine-manifest.json").read_text("utf8"))
+    if "engines" in original:
+        original = original["engines"]["windows-x64"]
+    if base.name != original["filename"] or base.stat().st_size != original["size"]:
+        raise ValueError("Base engine does not match its manifest")
+    with base.open("rb") as stream:
+        if hashlib.file_digest(stream, "sha256").hexdigest() != original["sha256"]:
+            raise ValueError("Base engine hash mismatch")
+    stage = ROOT / "output/runtime-build" / VERSION
+    stage.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(base) as archive:
+        for entry in archive.infolist():
+            if not (stage / entry.filename).resolve().is_relative_to(stage.resolve()):
+                raise ValueError("Unsafe archive path")
+        if archive.testzip() is not None:
+            raise ValueError("Corrupt base engine")
+        archive.extractall(stage)
+    source = stage / "python/Lib/site-packages/zotero_local_bilingual"
+    shutil.copytree(ROOT / "service/src/zotero_local_bilingual", source, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    for name in ("LICENSE", "THIRD_PARTY.md", "runtime-requirements.txt", "uv.lock"):
+        shutil.copy2(ROOT / name, stage / "licenses" / name)
+    for path in stage.rglob("__pycache__"):
+        assert path.resolve().is_relative_to(stage.resolve())
+        shutil.rmtree(path)
+    runtime = json.loads((stage / "runtime.json").read_text("utf8"))
+    runtime["version"] = VERSION
+    runtime["installed_size"] = sum(p.stat().st_size for p in stage.rglob("*") if p.is_file() and p != stage / "runtime.json")
+    (stage / "runtime.json").write_text(json.dumps(runtime, indent=2), "utf8")
+    if repository and not __import__("re").fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("repository must be OWNER/REPO")
+    filename = f"zlb-engine-{VERSION}-windows-x64.zip"
+    target = ROOT / "dist" / f"release-{VERSION}" / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    print("Compressing verified reused engine", flush=True)
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as output:
+        for path in sorted(stage.rglob("*")):
+            if path.is_file():
+                output.write(path, path.relative_to(stage).as_posix())
+    with target.open("rb") as stream:
+        digest = hashlib.file_digest(stream,"sha256").hexdigest()
+    manifest = {"version":VERSION,"protocol_version":2,"platform":"windows-x64","filename":filename,
+        "url":f"https://github.com/{repository}/releases/download/v{VERSION}/{filename}" if repository else None,
+        "size":target.stat().st_size,"installed_size":runtime["installed_size"],"sha256":digest}
+    for path in (target.parent / "engine-manifest-windows-x64.json",target.parent / "engine-manifest.json",ROOT / "plugin/addon/content/engine-manifest.json"):
+        path.write_text(json.dumps(manifest,indent=2),"utf8")
+    print(json.dumps(manifest),flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY", ""))
+    parser.add_argument("--reuse-engine", type=Path, help="Repackage a verified previous release without dependency or resource downloads")
     parser.add_argument("--uv", default=str(Path.home() / ".local/bin/uv.exe"))
     parser.add_argument("--skip-dependencies", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")
     args = parser.parse_args()
+    if args.reuse_engine:
+        reuse_engine(args.reuse_engine, args.repository)
+        return
     if sys.platform != "win32" or sys.maxsize <= 2**32 or sys.version_info[:2] != (3, 12):
         raise RuntimeError("Windows 引擎必须使用 x64 Python 3.12 构建")
     stage = ROOT / "output/runtime-build" / VERSION
@@ -33,7 +88,7 @@ def main():
         print("Copying relocatable Python", flush=True)
         shutil.copytree(sys.base_prefix, stage / "python", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     if not args.skip_dependencies:
-        subprocess.run([args.uv, "export", "--no-dev", "--no-emit-project", "--format", "requirements-txt",
+        subprocess.run([args.uv, "export", "--locked", "--no-dev", "--no-emit-project", "--format", "requirements-txt",
             "--output-file", "runtime-requirements.txt", "--quiet"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
         print("Installing hash-locked production wheels in staging", flush=True)
         subprocess.run([args.uv, "pip", "sync", "--python", str(python), "--break-system-packages", "--require-hashes",
@@ -100,7 +155,7 @@ def main():
         addon.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", "utf8")
     filename = f"zlb-engine-{VERSION}-windows-x64.zip"
     target = ROOT / "dist" / f"release-{VERSION}" / filename
-    target.parent.mkdir(exist_ok=True)
+    target.parent.mkdir(parents=True, exist_ok=True)
     print("Compressing engine", flush=True)
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as output:
         for path in sorted(stage.rglob("*")):
@@ -110,7 +165,7 @@ def main():
         "url": f"https://github.com/{args.repository}/releases/download/v{VERSION}/{filename}" if args.repository else None,
         "size": target.stat().st_size, "installed_size": size,
         "sha256": hashlib.file_digest(target.open("rb"), "sha256").hexdigest()}
-    for output in (ROOT / "dist" / f"release-{VERSION}" / "engine-manifest.json", ROOT / "plugin/addon/content/engine-manifest.json"):
+    for output in (target.parent / "engine-manifest-windows-x64.json", target.parent / "engine-manifest.json", ROOT / "plugin/addon/content/engine-manifest.json"):
         output.write_text(json.dumps(manifest, indent=2), "utf8")
     print(json.dumps(manifest), flush=True)
 

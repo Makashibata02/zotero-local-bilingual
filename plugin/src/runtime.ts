@@ -5,6 +5,17 @@ declare const RuntimeNative: any;
 
 type Manifest = { version: string; protocol_version: number; platform: string; url: string | null;
   size: number; installed_size: number; sha256: string; filename: string };
+type Catalog = {version: string; protocol_version: number; engines: Record<string, Manifest>};
+
+export function selectManifest(catalog: Catalog | Manifest, platform: string): Manifest {
+  const manifest = "engines" in catalog ? catalog.engines[platform] : catalog;
+  if (!manifest || manifest.platform !== platform) throw new Error(`此安装包尚未包含 ${platform} 引擎，请取得对应平台的完整发布包。`);
+  if (!/^\d+\.\d+\.\d+$/.test(manifest.version) || !/^[a-f0-9]{64}$/.test(manifest.sha256) ||
+      manifest.protocol_version !== 2 || catalog.protocol_version !== 2 || manifest.version !== catalog.version ||
+      !Number.isSafeInteger(manifest.size) || manifest.size <= 0 ||
+      !Number.isSafeInteger(manifest.installed_size) || manifest.installed_size <= 0) throw new Error("引擎发布清单无效");
+  return manifest;
+}
 type Feedback = (message: string) => void;
 type Endpoint = { url: string; token: string };
 
@@ -39,35 +50,78 @@ export class RuntimeManager {
     return undefined;
   }
 
+  private async stopIdleService(data: any, health: any, base: string): Promise<void> {
+    if (!health.managed || health.protocol_version !== 2 || !health.data_dir || !this.native.samePath(health.data_dir, base)) {
+      throw new Error("检测到非本插件托管的后台，未停止。请先关闭旧手动服务后重试。");
+    }
+    if (!health.shutdown_requested && (health.active_job || health.active_jobs?.length || health.pending_jobs > 0 || health.business_requests > 0)) {
+      throw new Error(`后台 ${health.version} 仍有任务或请求处理中，未停止。请待当前操作完成后重试。`);
+    }
+    if (!health.supports_idle_shutdown) {
+      const token = (await this.io.readUTF8(this.paths.join(base,"service-token.txt"))).trim();
+      const response = await this.request(data.url+"/v1/scheduler",{headers:{"X-Local-Bilingual-Token":token},signal:AbortSignal.timeout(3000)});
+      if (!response.ok) throw new Error(`无法确认旧后台 ${health.version} 的任务状态，未停止。请检查后台或稍后重试。`);
+      const scheduler = await response.json();
+      const counts = scheduler.counts || {};
+      if (["queued","running","cancelling"].some(state=>counts[state]>0)) {
+        throw new Error(`旧后台 ${health.version} 仍有运行或排队任务，未停止。请先等待任务完成。`);
+      }
+      throw new Error(`旧后台 ${health.version} 当前空闲，但该版本不支持自动退出。请停止操作插件，等待约 10 分钟，或重启电脑后重试；只重启 Zotero 不会结束后台。`);
+    }
+    if (!health.process_id || (data.pid && health.process_id !== data.pid)) throw new Error("后台身份已变化，未停止，请刷新后重试。");
+    if (!health.shutdown_requested) {
+      const token = (await this.io.readUTF8(this.paths.join(base,"service-token.txt"))).trim();
+      this.notify(`后台 ${health.version} 当前空闲，正在安全退出并切换引擎…`);
+      const response = await this.request(data.url+"/v1/runtime/shutdown-if-idle",{method:"POST",headers:{"Content-Type":"application/json","X-Local-Bilingual-Token":token},body:JSON.stringify({expected_version:health.version,expected_pid:health.process_id}),signal:AbortSignal.timeout(5000)});
+      if (!response.ok) {
+        let reason="无法安全退出旧后台，未启动第二个服务";
+        try {const result=await response.json();if(typeof result.detail==="string")reason=result.detail;} catch (_) {}
+        throw new Error(reason);
+      }
+    }
+    const deadline = Date.now()+30000;
+    for (let i=0;i<60 && Date.now()<deadline;i++) {
+      await this.native.delay(500);
+      const current=await this.healthy(data.url);
+      if (!current) {this.endpoint=undefined;return;}
+      if (current.process_id !== health.process_id || current.version !== health.version) throw new Error("后台身份在切换时发生变化，未启动第二个服务，请刷新后重试。");
+    }
+    throw new Error("旧后台正在退出但尚未完成，请稍后重试；没有启动第二个服务。");
+  }
+
   private async prepare(offline?: string): Promise<Endpoint> {
-    if (!this.native.windowsX64()) throw new Error("自动引擎仅支持 Windows 10/11 x64");
+    const platform = this.native.platform();
+    if (!platform) throw new Error("自动引擎支持 Windows x64、macOS Apple Silicon 和 Intel；当前架构暂不支持");
+    this.native.checkSystem();
     const base = this.native.baseDir();
     await this.io.makeDirectory(base, { ignoreExisting: true });
-    const manifest = await (await this.request("chrome://local-bilingual/content/engine-manifest.json")).json() as Manifest;
-    if (!/^\d+\.\d+\.\d+$/.test(manifest.version) || !/^[a-f0-9]{64}$/.test(manifest.sha256) ||
-        manifest.protocol_version !== 2 || manifest.platform !== "windows-x64") throw new Error("引擎发布清单无效");
+    await this.native.secureDirectory(base);
+    const catalog = await (await this.request("chrome://local-bilingual/content/engine-manifest.json")).json() as Catalog | Manifest;
+    const manifest = selectManifest(catalog, platform);
     // Refuse the old terminal service before creating/migrating its task database.
     const oldURL = this.native.legacyURL();
     const legacy = await this.healthy(oldURL);
-    if (legacy && (!legacy.data_dir || legacy.data_dir.toLowerCase().replace(/\\/g,"/") === base.toLowerCase().replace(/\\/g,"/")) && (!legacy.managed || legacy.protocol_version !== 2)) {
-      throw new Error("检测到旧手动服务。请关闭 start-service.ps1 所在终端一次，再点击完整测试；原配置、Key 和任务会保留。");
+    if (legacy && (!legacy.data_dir || this.native.samePath(legacy.data_dir, base)) && (!legacy.managed || legacy.protocol_version !== 2)) {
+      throw new Error("检测到旧手动服务。请关闭手动启动服务的终端一次，再点击完整测试；原配置、Key 和任务会保留。");
     }
     if (this.endpoint && !offline) {
       const health = await this.healthy(this.endpoint.url);
-      if (health?.managed && health.version === manifest.version) return this.endpoint;
+      if (health?.managed && health.version === manifest.version && !health.shutdown_requested) return this.endpoint;
     }
     const descriptor = this.paths.join(base, "managed-service.json");
     if (await this.io.exists(descriptor)) {
       const data = await this.io.readJSON(descriptor);
       const health = await this.healthy(data.url);
       if (health) {
-        if (!health.managed || health.version !== manifest.version) throw new Error("其他版本服务仍在处理任务，请等待其空闲退出后重试");
-        if (offline) throw new Error("服务正在使用当前引擎，请等待空闲退出后再重新导入");
-        this.endpoint = {url: data.url, token: (await this.io.readUTF8(this.paths.join(base, "service-token.txt"))).trim()};
-        return this.endpoint;
+        if (health.version !== manifest.version || offline || health.shutdown_requested || !health.managed) {
+          await this.stopIdleService(data,health,base);
+        } else {
+          this.endpoint = {url: data.url, token: (await this.io.readUTF8(this.paths.join(base, "service-token.txt"))).trim()};
+          return this.endpoint;
+        }
       }
     }
-    const runtime = this.paths.join(base, "runtimes", manifest.version);
+    const runtime = this.paths.join(base, "runtimes", platform === "windows-x64" ? manifest.version : `${manifest.version}-${platform}`);
     const ready = this.paths.join(runtime, ".ready.json");
     let installed = false;
     try { installed = (await this.io.readJSON(ready)).sha256 === manifest.sha256; } catch (_) {}
@@ -88,6 +142,8 @@ export class RuntimeManager {
       this.notify("解压引擎与模型资源…");
       try {
         await this.native.extract(archive, staging, safeEntry, manifest.installed_size * 1.05, (percent: number) => this.notify(`解压引擎：${percent}%`));
+        const metadata = await this.io.readJSON(this.paths.join(staging, "runtime.json"));
+        if (metadata.version !== manifest.version || metadata.platform !== platform || metadata.protocol_version !== 2) throw new Error("离线引擎的平台或版本不符，未安装");
         this.notify("自检 Python、模型、字体和分词资源…");
         await this.native.preflight(staging, base);
         await this.io.writeJSON(this.paths.join(staging, ".ready.json"), {sha256: manifest.sha256});

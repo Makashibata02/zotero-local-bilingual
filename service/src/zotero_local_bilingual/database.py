@@ -71,6 +71,8 @@ class Database:
             columns = {row[1] for row in db.execute("PRAGMA table_info(profiles)")}
             if "provider" not in columns:
                 db.execute("ALTER TABLE profiles ADD COLUMN provider TEXT NOT NULL DEFAULT 'openai'")
+            if "deleted_at" not in columns:
+                db.execute("ALTER TABLE profiles ADD COLUMN deleted_at TEXT")
             job_columns = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
             if "profile_snapshot_json" not in job_columns:
                 db.execute("ALTER TABLE jobs ADD COLUMN profile_snapshot_json TEXT")
@@ -126,9 +128,37 @@ class Database:
         with self.connect() as db:
             return bool(db.execute("SELECT 1 FROM jobs WHERE profile_id=? AND (status IN ('queued','running','cancelling') OR (status IN ('paused','failed') AND (stage='budget_limit' OR error LIKE '%达到任务 token 或请求次数上限%'))) LIMIT 1", (profile_id,)).fetchone())
 
+    def profile_delete_reason(self, profile_id: str) -> str | None:
+        with self._lock, self.connect() as db:
+            rows = db.execute("""SELECT id,status FROM jobs WHERE profile_id=? AND
+                (status IN ('queued','running','cancelling','paused') OR
+                 (status='failed' AND (stage='budget_limit' OR error LIKE '%达到任务 token 或请求次数上限%')))
+                ORDER BY created_at LIMIT 3""", (profile_id,)).fetchall()
+        if rows:
+            return "配置被排队、运行、暂停或等待追加额度的任务使用，请先结束对应任务：" + ", ".join(row['id'] for row in rows)
+        return None
+
+    def default_profile_id(self) -> str | None:
+        """None means not yet migrated; an empty string means no default API."""
+        with self._lock, self.connect() as db:
+            row = db.execute("SELECT value FROM metadata WHERE key='default_api_profile'").fetchone()
+        return row[0] if row else None
+
+    def set_default_profile(self, profile_id: str) -> None:
+        with self._lock, self.connect() as db:
+            db.execute("INSERT INTO metadata VALUES ('default_api_profile',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (profile_id,))
+
+    def mark_profile_deleted(self, profile_id: str, replacement: str) -> None:
+        with self._lock, self.connect() as db:
+            db.execute("UPDATE profiles SET deleted_at=?,updated_at=? WHERE id=? AND deleted_at IS NULL", (utc_now(), utc_now(), profile_id))
+            db.execute("UPDATE metadata SET value=? WHERE key='default_api_profile' AND value=?", (replacement, profile_id))
+
     def upsert_profile(self, profile: dict[str, Any]) -> None:
         now = utc_now()
         with self._lock, self.connect() as db:
+            previous = db.execute("SELECT deleted_at FROM profiles WHERE id=?", (profile["id"],)).fetchone()
+            if previous and previous["deleted_at"]:
+                raise ValueError("配置已删除，请另存为新配置")
             db.execute(
                 """
                 INSERT INTO profiles
@@ -159,16 +189,16 @@ class Database:
                 ),
             )
 
-    def get_profile(self, profile_id: str) -> dict[str, Any] | None:
+    def get_profile(self, profile_id: str, include_deleted: bool = False) -> dict[str, Any] | None:
         with self._lock, self.connect() as db:
             row = db.execute(
-                "SELECT * FROM profiles WHERE id=?", (profile_id,)
+                "SELECT * FROM profiles WHERE id=? AND (? OR deleted_at IS NULL)", (profile_id, include_deleted),
             ).fetchone()
         return dict(row) if row else None
 
     def list_profiles(self) -> list[dict[str, Any]]:
         with self._lock, self.connect() as db:
-            rows = db.execute("SELECT * FROM profiles ORDER BY name").fetchall()
+            rows = db.execute("SELECT * FROM profiles WHERE deleted_at IS NULL ORDER BY name,id").fetchall()
         return [dict(row) for row in rows]
 
     def create_job(self, job: dict[str, Any]) -> None:

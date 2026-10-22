@@ -440,6 +440,7 @@ async function translateSelection(): Promise<void> {
       return;
     }
     await ensureEngineReady();
+    await plugin.preferences.initializeDefaultProfile();
     const profiles = await (await api("/v1/profiles")).json();
     const capabilities = await (await api("/v1/capabilities")).json();
     const scheduler = await (await api("/v1/scheduler")).json();
@@ -454,7 +455,7 @@ async function translateSelection(): Promise<void> {
         resolve(value);
       };
       const args = {plugin,entries,profiles,capabilities,parallel:scheduler.max_parallel,ready:false,resolve:finish};
-      const dialog = parent.openDialog("chrome://local-bilingual/content/confirm.xhtml", "zlb-confirm", "chrome,dialog,resizable,centerscreen,width=680,height=760",args);
+      const dialog = parent.openDialog("chrome://local-bilingual/content/confirm.xhtml", "zlb-confirm", "chrome,dialog,resizable,centerscreen,width=560,height=640",args);
       // Chrome windows can unload their initial about:blank before the real UI.
       // Only the loaded confirmation document can cancel this selection.
       dialog.addEventListener("unload",() => {if (args.ready) finish(null);});
@@ -465,7 +466,9 @@ async function translateSelection(): Promise<void> {
     openWorkbench(true);
     const selectedProfile = profiles.find((p:any) => p.id === choice.profile);
     if (!selectedProfile) {
-      await api("/v1/profiles",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:choice.profile,name:choice.profile === "free-bing" ? "免费 Bing" : "免费腾讯",provider:choice.provider})});
+      const body={id:`profile-${crypto.randomUUID().replace(/-/g,"").slice(0,16)}`,name:choice.provider === "bing" ? "免费 Bing" : "免费腾讯",provider:choice.provider};
+      await api("/v1/profiles",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      choice.profile=body.id;
     }
     await api("/v1/scheduler",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_parallel:choice.parallel})});
     const selection = {...choice,batch:crypto.randomUUID().replace(/-/g,"")};
@@ -483,11 +486,27 @@ const plugin = {
   confirmation: {
     cancel(window:any) {window.arguments[0].resolve(null);window.close();},
     choice(window:any, group:string): any {
-      return window.document.getElementById(group).querySelector("input:checked");
+      const element=window.document.getElementById(group);
+      return element.localName === "select" ? element.selectedOptions[0] : element.querySelector("input:checked");
     },
     renderChoices(window:any, group:string, items:any[], preferred:string) {
       const d=window.document, container=d.getElementById(group);
       container.replaceChildren();
+      if (container.localName === "select") {
+        const chosen=items.find(item=>item.value===preferred && !item.disabled);
+        if (!chosen) {
+          const placeholder=d.createElementNS("http://www.w3.org/1999/xhtml","option");
+          placeholder.value="";placeholder.textContent="请选择已支持的选项";placeholder.disabled=true;placeholder.selected=true;container.append(placeholder);
+        }
+        for (const item of items) {
+          const option=d.createElementNS("http://www.w3.org/1999/xhtml","option");
+          option.value=item.value;option.textContent=item.title+(item.disabled ? "（未支持／未验收）" : "");
+          option.disabled=!!item.disabled;option.selected=item===chosen;option.title=option.textContent;
+          if (item.provider) option.dataset.provider=item.provider;
+          container.append(option);
+        }
+        return;
+      }
       const chosen=items.find(item=>item.value===preferred && !item.disabled) || items.find(item=>!item.disabled);
       for (const item of items) {
         const label=d.createElementNS("http://www.w3.org/1999/xhtml","label");
@@ -513,13 +532,14 @@ const plugin = {
     onLoad(window:any) {
       const args=window.arguments[0], d=window.document;
       args.ready=true;
-      const seen=new Set<string>(), models=[];
-      for (const p of [...args.profiles,{id:"free-bing",name:"免费 Bing（实验性）",provider:"bing"},{id:"free-tencent",name:"免费腾讯（实验性）",provider:"tencent"}]) {
-        if (seen.has(p.id)) continue;
-        seen.add(p.id);
-        models.push({value:p.id,title:p.name+(p.model ? " · "+p.model : ""),provider:p.provider});
+      const models=args.profiles.map((p:any)=>({value:p.id,title:p.name+(p.model ? " · "+p.model : "")+(p.is_default ? "（默认）" : ""),provider:p.provider,disabled:p.provider==="openai" && p.has_api_key===false}));
+      for (const [provider,id,name] of [["bing","free-bing","免费 Bing（实验性）"],["tencent","free-tencent","免费腾讯（实验性）"]]) {
+        if (!models.some((p:any)=>p.provider===provider)) models.push({value:id,title:name,provider,disabled:false});
       }
-      plugin.confirmation.renderChoices(window,"model",models,pref("profileId","free-bing"));
+      const defaultProfile=args.profiles.find((p:any)=>p.is_default && p.provider==="openai" && p.has_api_key!==false);
+      const preferred=defaultProfile?.id || models.find((p:any)=>p.provider==="bing")?.value || "free-bing";
+      plugin.confirmation.renderChoices(window,"model",models,preferred);
+      d.getElementById("model-note").textContent=defaultProfile ? "本次切换不会改变默认模型。" : "尚未设置默认 API 模型；默认使用免费 Bing，也可手动选择其他服务。";
       plugin.confirmation.renderChoices(window,"output",[
         {value:"dual",title:"双语",description:"一份 PDF：左侧完整原页，右侧对应译文页。"},
         {value:"dual_and_mono",title:"双语＆译文",description:"两份 PDF：左右对照版和独立译文版。只翻译一次。"},
@@ -543,25 +563,27 @@ const plugin = {
       const d=window.document,args=window.arguments[0];
       const provider=plugin.confirmation.choice(window,"model")?.dataset.provider || "openai";
       const language=d.getElementById("language");
-      // Do not recreate focused radios when the file/output/concurrency changes.
+      // Rebuild only when the provider changes; preserve keyboard focus otherwise.
       if (language.dataset.provider!==provider) {
         const previous=plugin.confirmation.choice(window,"language")?.value || "zh-CN";
-        plugin.confirmation.renderChoices(window,"language",args.capabilities.languages.map((lang:any)=> {
-          const supported=args.capabilities.providers[provider]?.[lang.id]?.supported;
-          return {value:lang.id,title:lang.name,disabled:!supported,description:supported ? "" : "未支持／未验收"};
-        }),previous);
+        const items=args.capabilities.languages.map((lang:any)=>({value:lang.id,title:lang.name,disabled:!args.capabilities.providers[provider]?.[lang.id]?.supported}));
+        const previousSupported=items.some((lang:any)=>lang.value===previous && !lang.disabled);
+        const fallback=items.some((lang:any)=>lang.value==="zh-CN" && !lang.disabled) ? "zh-CN" : "";
+        plugin.confirmation.renderChoices(window,"language",items,previousSupported ? previous : fallback);
+        d.getElementById("language-note").textContent=previousSupported ? "" : fallback ? "所选服务不支持刚才的语言，已切换为简体中文。" : "所选服务不支持简体中文，请手动选择已支持的语言。";
         language.dataset.provider=provider;
       }
       const count=[...d.querySelectorAll("#files input")].filter((x:any)=>x.checked).length;
       const tokens=Number(pref("maxTotalTokens","1000000")), requests=Number(pref("maxRequests","1000"));
       d.getElementById("limits").textContent=`已选择 ${count} / ${args.entries.length} 份 PDF。`+(provider==="openai" ? `\n每篇上限 ${tokens} tokens / ${requests} 请求；合计 ${count*tokens} tokens / ${count*requests} 请求。人民币费用取决于服务商。` : "\n免费服务按字符计量，每次最多一篇运行，不会自动切换收费 API。")+(provider==="openai" && plugin.confirmation.choice(window,"parallel")?.value==="2" ? "\n两篇并行会同时消耗 API 额度。" : "");
-      d.getElementById("confirm").disabled=!count || !plugin.confirmation.choice(window,"language");
+      const selectedModel=plugin.confirmation.choice(window,"model"), selectedLanguage=plugin.confirmation.choice(window,"language");
+      d.getElementById("confirm").disabled=!count || !selectedModel || selectedModel.disabled || !selectedLanguage || selectedLanguage.disabled;
       d.getElementById("error").textContent="";
     },
     accept(window:any) {
       const d=window.document,indices=[...d.querySelectorAll("#files input")].filter((x:any)=>x.checked).map((x:any)=>Number(x.value));
       const option=plugin.confirmation.choice(window,"model"), language=plugin.confirmation.choice(window,"language");
-      if (!indices.length || !option || !language || language.disabled) {d.getElementById("error").textContent="请勾选至少一份 PDF，并选择已支持的目标语言。";return;}
+      if (!indices.length || !option || option.disabled || !language || language.disabled) {d.getElementById("error").textContent="请勾选至少一份 PDF，并选择已支持的目标语言。";return;}
       window.arguments[0].resolve({indices,profile:option.value,provider:option.dataset.provider,target:language.value,output:plugin.confirmation.choice(window,"output").value,parallel:Number(plugin.confirmation.choice(window,"parallel").value)});window.close();
     }
   },
@@ -747,7 +769,7 @@ const plugin = {
           const extra=make("div","detail-actions");detailCell.append(extra);
           const choices:{label:string,action:()=>Promise<void>}[]=[];
           const add=(label:string,action:()=>Promise<void>)=>choices.push({label,action});
-          if (["queued", "running", "cancelling"].includes(job.status)) add("取消任务",async()=>{await api(`/v1/jobs/${job.id}/cancel`,{method:"POST"});});
+          if (["queued", "running", "cancelling", "paused"].includes(job.status) || (job.status==="failed" && job.budget?.can_extend)) add("取消任务",async()=>{await api(`/v1/jobs/${job.id}/cancel`,{method:"POST"});});
           if(job.budget?.can_extend) add("确认追加额度",()=>plugin.workbench.extendBudget(window,job));
           else if(!job.cleanup_state && ["failed","cancelled","paused"].includes(job.status)) add("恢复任务",async()=>{await api(`/v1/jobs/${job.id}/retry`,{method:"POST"});});
           for(const artifact of job.artifacts?.length ? job.artifacts : job.artifact_name ? [{kind:"dual",name:job.artifact_name}] : []) add(artifact.kind==="mono" ? "打开译文 PDF" : "打开双语 PDF",()=>openJobResult(job,artifact.name));
@@ -802,23 +824,84 @@ const plugin = {
   },
 
   preferences: {
-    async loadProfiles(document:Document) {
+    async initializeDefaultProfile() {
+      await api(`/v1/profiles/${encodeURIComponent(pref("profileId","default"))}/default`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({initialize_only:true})});
+    },
+    async loadProfiles(document:Document, strict=false) {
       try {
+        await plugin.preferences.initializeDefaultProfile();
         const profiles=await (await api("/v1/profiles")).json();
         const select=document.getElementById("zlb-profile-select") as HTMLSelectElement;
         if (!select) return;
         select.replaceChildren();
-        for (const p of profiles) {const o=document.createElementNS("http://www.w3.org/1999/xhtml","option") as HTMLOptionElement;o.value=p.id;o.textContent=p.name+(p.model ? " · "+p.model : "");select.append(o);}
-        select.value=pref("profileId","default");
+        for (const p of profiles) {const o=document.createElementNS("http://www.w3.org/1999/xhtml","option") as HTMLOptionElement;o.value=p.id;o.textContent=p.name+(p.model ? " · "+p.model : "")+(p.is_default ? "（默认）" : "");select.append(o);}
+        select.value=profiles.find((p:any)=>p.id===pref("profileId","default"))?.id || profiles.find((p:any)=>p.is_default)?.id || profiles[0]?.id || "";
         (document as any)._zlbProfiles=profiles;
-      } catch (_error) { /* Settings must open without starting the engine. */ }
+        if(profiles.length && !profiles.some((p:any)=>p.id===pref("profileId","default"))) plugin.preferences.profileChanged(document);
+        plugin.preferences.updateProfileActions(document);
+      } catch (error) {if(strict) throw error; /* Settings open without starting the engine. */}
+    },
+    updateProfileActions(document:Document) {
+      const p=(document as any)._zlbProfiles?.find((p:any)=>p.id===elementValue(document,"zlb-profile-select"));
+      const busy=!!(document as any)._zlbProfileBusy;
+      const defaults=document.getElementById("zlb-default-profile-button") as HTMLButtonElement;
+      const remove=document.getElementById("zlb-delete-profile-button") as HTMLButtonElement;
+      if(defaults) defaults.disabled=busy || !p || p.provider!=="openai" || !p.has_api_key || p.is_default;
+      if(remove) remove.disabled=busy || !p || p.can_delete===false;
+      const selector=document.getElementById("zlb-profile-select") as HTMLSelectElement;
+      if(selector) selector.disabled=busy;
+      const test=document.getElementById("zlb-test-button") as HTMLButtonElement;
+      if(test && busy) test.disabled=true;
+      setStatus(document,p?.delete_block_reason || (p?.is_default ? "此配置是默认 API 模型；浏览其他配置不会改变默认。" : "选择配置不会调用模型。可将已保存的 API 配置设为默认。"),"zlb-profile-hint");
+    },
+    async setDefaultProfile(document:Document) {
+      if((document.getElementById("zlb-test-button") as HTMLButtonElement)?.disabled) {setStatus(document,"正在保存或测试配置，请等待完成。","zlb-default-profile-status");return;}
+      if((document as any)._zlbProfileBusy || selectionInProgress) return;
+      const id=elementValue(document,"zlb-profile-select");if(!id) return;
+      (document as any)._zlbProfileBusy=true;plugin.preferences.updateProfileActions(document);
+      try {
+        setStatus(document,"正在设为默认 API 模型…","zlb-default-profile-status");
+        await ensureEngineReady();
+        await api(`/v1/profiles/${encodeURIComponent(id)}/default`,{method:"POST"});
+        await plugin.preferences.loadProfiles(document,true);
+        setStatus(document,"默认 API 模型已保存，未调用翻译服务。","zlb-default-profile-status");
+      } catch(error) {setStatus(document,`设置失败：${String(error)}`,"zlb-default-profile-status");}
+      finally {(document as any)._zlbProfileBusy=false;const test=document.getElementById("zlb-test-button") as HTMLButtonElement;if(test)test.disabled=false;plugin.preferences.updateProfileActions(document);}
+    },
+    async deleteProfile(document:Document) {
+      if((document.getElementById("zlb-test-button") as HTMLButtonElement)?.disabled) {setStatus(document,"正在保存或测试配置，请等待完成。","zlb-delete-profile-status");return;}
+      if((document as any)._zlbProfileBusy || selectionInProgress) return;
+      const profiles=(document as any)._zlbProfiles || [],p=profiles.find((p:any)=>p.id===elementValue(document,"zlb-profile-select"));
+      if(!p) return;
+      if(p.can_delete===false) {setStatus(document,p.delete_block_reason || "配置正在使用，暂不能删除。","zlb-delete-profile-status");return;}
+      const replacement=profiles.find((item:any)=>item.id!==p.id && item.provider==="openai" && item.has_api_key);
+      const next=p.is_default ? replacement ? `\n删除后默认 API 改为：${replacement.name} · ${replacement.model}` : "\n没有其他 API 配置，默认将回到免费 Bing。" : "";
+      const message=`删除配置：${p.name}${p.model ? " · "+p.model : ""}？\n同时删除该配置保存的 API Key；历史任务和 PDF 保留。\n使用此配置的失败或取消任务将不能直接恢复。${next}`;
+      if(!Zotero.getMainWindow().confirm(message)) {setStatus(document,"已取消删除，配置与 Key 保留。","zlb-delete-profile-status");return;}
+      (document as any)._zlbProfileBusy=true;plugin.preferences.updateProfileActions(document);
+      try {
+        setStatus(document,"正在删除配置及其 Key…","zlb-delete-profile-status");
+        await ensureEngineReady();
+        await api(`/v1/profiles/${encodeURIComponent(p.id)}`,{method:"DELETE"});
+        await plugin.preferences.loadProfiles(document,true);
+        if(elementValue(document,"zlb-profile-select")) plugin.preferences.profileChanged(document);
+        else {
+          setPref("profileId",`profile-${crypto.randomUUID().replace(/-/g,"").slice(0,16)}`);setPref("provider","bing");setPref("profileName","默认翻译服务");setPref("baseUrl","");setPref("model","");
+          for(const [id,value] of [["zlb-profile-name","默认翻译服务"],["zlb-provider","bing"],["zlb-base-url",""],["zlb-model",""],["zlb-api-key",""]]) (document.getElementById(id) as HTMLInputElement).value=value;
+          plugin.preferences.providerChanged(document,false);
+        }
+        setStatus(document,"配置及其 Key 已删除，历史任务和 PDF 保留。","zlb-delete-profile-status");
+      } catch(error) {setStatus(document,`删除失败：${String(error)}。请刷新配置列表后重试。`,"zlb-delete-profile-status");}
+      finally {(document as any)._zlbProfileBusy=false;const test=document.getElementById("zlb-test-button") as HTMLButtonElement;if(test)test.disabled=false;plugin.preferences.updateProfileActions(document);}
     },
     profileChanged(document:Document) {
       const p=(document as any)._zlbProfiles?.find((p:any)=>p.id===elementValue(document,"zlb-profile-select"));
       if (!p) return;
       setPref("profileId",p.id);setPref("provider",p.provider);setPref("baseUrl",p.base_url);setPref("model",p.model);
       for (const [id,value] of [["zlb-profile-name",p.name],["zlb-provider",p.provider],["zlb-base-url",p.base_url],["zlb-model",p.model],["zlb-api-key",""]]) (document.getElementById(id) as HTMLInputElement).value=value;
+      setPref("profileName",p.name);
       plugin.preferences.providerChanged(document,false);
+      plugin.preferences.updateProfileActions(document);
     },
     showWorkbench(document: Document) {
       try {openWorkbench(); setStatus(document,"任务工作台已打开。关闭窗口不取消任务。","zlb-workbench-open-status");}
@@ -910,6 +993,7 @@ const plugin = {
         setPref("serviceUrl", endpoint.url); setPref("serviceToken", endpoint.token);
         feedback(`${offline ? "离线导入" : "在线准备"}成功：引擎已就绪，未调用翻译模型。现在可以保存配置并测试。`);
         setStatus(document,`后台版本 ${DISPLAY_VERSION}（匹配）`,"zlb-runtime-version");
+        await plugin.preferences.loadProfiles(document);
       } catch (error) {feedback(`${offline ? "导入" : "在线安装"}失败：${String(error)}${offline ? "" : "。可使用旁边的离线导入，或打开 GitHub 下载页。"}`);}
       finally {for (const item of buttons) item.disabled = false;}
     },
@@ -926,7 +1010,7 @@ const plugin = {
     },
     async saveAndTest(document: Document) {
       const button = document.getElementById("zlb-test-button") as HTMLButtonElement;
-      if (button.disabled) return;
+      if (button.disabled || (document as any)._zlbProfileBusy) return;
       if (selectionInProgress) {setStatus(document,"翻译批次正在进行，请先完成或取消当前批次，再更改服务并完整测试。"); return;}
       button.disabled = true;
       const feedback = (text: string) => setStatus(document,text);
@@ -934,6 +1018,7 @@ const plugin = {
         const selected = elementValue(document,"zlb-provider");
         const provider = selected === "deepseek" ? "openai" : selected;
         await ensureEngineReady(feedback);
+        await plugin.preferences.initializeDefaultProfile();
         const profiles = await (await api("/v1/profiles")).json();
         const pendingTests = JSON.parse(pref("pendingSelftestRequests","{}"));
         if (pref("pendingSelftestId")) {

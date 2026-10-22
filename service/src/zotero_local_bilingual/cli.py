@@ -22,6 +22,8 @@ def main() -> None:
     parser.add_argument("--runtime-root")
     parser.add_argument("--idle-seconds", type=int, default=600)
     args = parser.parse_args()
+    if os.name != "nt":
+        os.umask(0o077)
     if args.data_dir:
         os.environ["ZLB_DATA_DIR"] = args.data_dir
     if args.runtime_root:
@@ -55,11 +57,19 @@ def main() -> None:
             msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError:
             raise SystemExit("本机服务已经启动，未打开第二个任务处理进程")
+    else:
+        import fcntl
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            lock.close()
+            raise SystemExit("本机服务已经启动，未打开第二个任务处理进程") from None
     os.environ["ZLB_MANAGED"] = "1" if args.managed else "0"
     import logging
     logging.basicConfig(filename=settings.logs_dir / "service.log", level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s")
-    from .app import app
+    from .app import create_app
+    app = create_app(settings)
     import uvicorn
     descriptor = settings.data_dir / "managed-service.json"
     sock = socket.socket()
@@ -78,10 +88,13 @@ def main() -> None:
         last_busy = time.monotonic()
         while not server.should_exit:
             await asyncio.sleep(2)
+            if app.state.shutdown_requested:
+                server.should_exit = True
+                continue
             runner = app.state.runner
-            if runner.active_jobs or runner.pending or not runner.queue.empty():
+            if runner.active_jobs or runner.pending or not runner.queue.empty() or app.state.business_requests:
                 last_busy = time.monotonic()
-            if (args.managed and not runner.active_jobs and not runner.pending and runner.queue.empty()
+            if (args.managed and not runner.active_jobs and not runner.pending and runner.queue.empty() and not app.state.business_requests
                     and time.monotonic() - max(app.state.last_business, last_busy) >= args.idle_seconds):
                 server.should_exit = True
 

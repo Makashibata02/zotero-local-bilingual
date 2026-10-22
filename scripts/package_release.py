@@ -16,7 +16,9 @@ def main():
     release = ROOT/'dist'/f'release-{version}'
     release.mkdir(parents=True, exist_ok=True)
     manifest = json.loads((release/'engine-manifest.json').read_text('utf8'))
-    assert (release/manifest['filename']).is_file()
+    engines=manifest.get('engines', {manifest.get('platform'):manifest})
+    for engine in engines.values():
+        assert (release/engine['filename']).is_file()
     xpi = release/f'zotero-local-bilingual-{version}.xpi'
     if args.reuse_xpi:
         with zipfile.ZipFile(xpi) as archive:

@@ -75,6 +75,7 @@ function harness({ readError = false, brokenDisplay = false, brokenConstructor =
       if(url.endsWith('/v1/profiles'))return Response.json([{id:'default',name:'Default',provider:'openai',model:'mock'}]);
       if(url.endsWith('/v1/capabilities'))return Response.json({languages:[{id:'zh-CN',name:'简体中文'}],providers:{openai:{'zh-CN':{supported:true}}}});
       if(url.endsWith('/v1/scheduler'))return Response.json({max_parallel:1});
+      if(url.endsWith("/default"))return Response.json({default_profile_id:"default"});
       requests.push({ url, init });
       if (url.endsWith('/v1/jobs')) {
         const id = init.body.get('client_request_id');

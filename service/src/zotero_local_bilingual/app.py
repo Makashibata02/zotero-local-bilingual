@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Annotated
 
 import httpx
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile, Request
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import __version__
@@ -72,15 +72,28 @@ def create_app(
     app.state.database = database
     app.state.secret_store = secret_store
     app.state.runner = runner
+    submission_lock = asyncio.Lock()
+    testing_profiles: set[str] = set()
 
     app.state.last_business = time.monotonic()
+    app.state.shutdown_requested = False
+    app.state.business_requests = 0
 
     @app.middleware("http")
     async def business_activity(request, call_next):
-        response = await call_next(request)
-        if request.method == "POST" and response.status_code < 400:
-            app.state.last_business = time.monotonic()
-        return response
+        mutating = request.method in {"POST", "DELETE", "PUT", "PATCH"}
+        if mutating and app.state.shutdown_requested:
+            return JSONResponse(status_code=503, content={"detail":"后台正在安全退出，尚未接收此操作；请在新版引擎就绪后重试"})
+        if mutating:
+            app.state.business_requests += 1
+        try:
+            response = await call_next(request)
+            if mutating and response.status_code < 400 and getattr(request.state,"counts_as_business",True):
+                app.state.last_business = time.monotonic()
+            return response
+        finally:
+            if mutating:
+                app.state.business_requests -= 1
 
     def authorize(x_local_bilingual_token: str | None = Header(default=None)) -> None:
         if not x_local_bilingual_token or not __import__("hmac").compare_digest(
@@ -88,9 +101,27 @@ def create_app(
         ):
             raise HTTPException(status_code=401, detail="本机服务令牌无效")
 
+    def api_candidates(exclude: str = "") -> list[dict]:
+        return [p for p in database.list_profiles() if p["id"] != exclude and
+            p.get("provider", "openai") == "openai" and secret_store.get_api_key(p["id"])]
+
+    def delete_reason(profile_id: str) -> str | None:
+        if profile_id in testing_profiles:
+            return "此配置正在测试连接，请等待测试完成后再删除"
+        return database.profile_delete_reason(profile_id)
+
+    def require_profile(profile_id: str) -> dict:
+        row = database.get_profile(profile_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="模型配置不存在或已删除；请重新选择已保存的配置")
+        return row
+
     def public_profile(row: dict) -> ProfilePublic:
+        reason = delete_reason(row["id"])
         return ProfilePublic(
             id=row["id"],
+            is_default=database.default_profile_id() == row["id"],
+            can_delete=not reason, delete_block_reason=reason,
             provider=row.get("provider", "openai"),
             name=row["name"],
             base_url=row["base_url"],
@@ -159,10 +190,30 @@ def create_app(
             engine="BabelDOC",
             engine_version=engine_version,
             data_dir=str(settings.data_dir),
+            supports_idle_shutdown=os.environ.get("ZLB_MANAGED") == "1",
+            process_id=os.getpid(), shutdown_requested=app.state.shutdown_requested,
+            pending_jobs=len(database.list_recoverable_jobs()),
+            business_requests=app.state.business_requests,
             active_job=runner.active_job,
             active_jobs=runner.active_jobs, max_parallel=runner.max_parallel,
             deployment_verified=any(TranslationOptions.model_validate_json(r["options_json"]).is_selftest and r["status"] == "completed" for r in database.list_jobs(limit=100000, include_hidden=True)),
         )
+
+    @app.post("/v1/runtime/shutdown-if-idle", dependencies=[Depends(authorize)])
+    async def shutdown_if_idle(request: dict):
+        async with submission_lock:
+            if os.environ.get("ZLB_MANAGED") != "1":
+                raise HTTPException(status_code=409, detail="只能自动切换插件托管的后台，手动服务需自行关闭")
+            if request.get("expected_version") != __version__ or request.get("expected_pid") != os.getpid():
+                raise HTTPException(status_code=409, detail="后台身份已变化，请重新检查后切换")
+            if (runner.active_jobs or runner.pending or not runner.queue.empty() or
+                    database.list_recoverable_jobs() or testing_profiles):
+                raise HTTPException(status_code=409, detail="旧后台仍有运行或排队任务，未停止；请先等待任务完成")
+            # Includes this shutdown POST; any other in-flight mutation blocks it.
+            if app.state.business_requests > 1:
+                raise HTTPException(status_code=409, detail="旧后台仍在处理配置、上传或测试请求，请待请求完成后重试")
+            app.state.shutdown_requested = True
+            return {"accepted":True,"version":__version__,"pid":os.getpid()}
 
     @app.get(
         "/v1/profiles",
@@ -176,18 +227,66 @@ def create_app(
         "/v1/profiles", response_model=ProfilePublic, dependencies=[Depends(authorize)]
     )
     async def save_profile(profile: ProfileInput) -> ProfilePublic:
-        data = profile.model_dump(mode="json")
-        api_key = data.pop("api_key", None)
-        data["base_url"] = str(profile.base_url).rstrip("/") if profile.base_url else ""
-        previous = database.get_profile(profile.id)
-        if previous and database.profile_in_use(profile.id):
-            if not api_key and all(previous.get(k) == v for k,v in data.items()):
-                return public_profile(previous)
-            raise HTTPException(status_code=409, detail="此配置被排队、运行或等待追加额度的任务引用，不能覆盖。请另存为新配置。")
-        database.upsert_profile(data)
-        if api_key:
-            secret_store.set_api_key(profile.id, api_key)
-        return public_profile(database.get_profile(profile.id))
+        async with submission_lock:
+            data = profile.model_dump(mode="json")
+            api_key = data.pop("api_key", None)
+            data["base_url"] = str(profile.base_url).rstrip("/") if profile.base_url else ""
+            previous = database.get_profile(profile.id, include_deleted=True)
+            if previous and previous.get("deleted_at"):
+                raise HTTPException(status_code=409, detail="配置已删除，请另存为新配置")
+            if previous and (database.profile_in_use(profile.id) or profile.id in testing_profiles):
+                if not api_key and all(previous.get(k) == v for k,v in data.items()):
+                    return public_profile(previous)
+                raise HTTPException(status_code=409, detail="此配置被任务或连接测试使用，不能覆盖。请另存为新配置。")
+            if api_key:
+                try:
+                    secret_store.set_api_key(profile.id, api_key)
+                except Exception:
+                    raise HTTPException(status_code=503, detail="无法保存 API Key，请允许系统凭据管理器／macOS 钥匙串访问后重试；未保存配置") from None
+            database.upsert_profile(data)
+            if database.default_profile_id() == profile.id and data["provider"] != "openai":
+                candidates = api_candidates(exclude=profile.id)
+                database.set_default_profile(candidates[0]["id"] if candidates else "")
+            # The first configured API fills a vacant default; saving another does not replace it.
+            if not database.default_profile_id() and data["provider"] == "openai" and secret_store.get_api_key(profile.id):
+                database.set_default_profile(profile.id)
+            return public_profile(database.get_profile(profile.id))
+
+    @app.post("/v1/profiles/{profile_id}/default", dependencies=[Depends(authorize)])
+    async def set_default_profile(profile_id: str, http_request: Request, request: dict | None = None):
+        async with submission_lock:
+            if request and request.get("initialize_only") is True:
+                if database.default_profile_id() is None:
+                    candidates = api_candidates()
+                    chosen = next((p for p in candidates if p["id"] == profile_id), candidates[0] if candidates else None)
+                    database.set_default_profile(chosen["id"] if chosen else "")
+                else:
+                    http_request.state.counts_as_business = False
+            else:
+                profile = require_profile(profile_id)
+                if profile.get("provider", "openai") != "openai" or not secret_store.get_api_key(profile_id):
+                    raise HTTPException(status_code=400, detail="默认 API 模型必须是已保存且具有 Key 的 API 配置")
+                database.set_default_profile(profile_id)
+            return {"default_profile_id": database.default_profile_id() or ""}
+
+    @app.delete("/v1/profiles/{profile_id}", dependencies=[Depends(authorize)])
+    async def delete_profile(profile_id: str):
+        async with submission_lock:
+            row = database.get_profile(profile_id, include_deleted=True)
+            if not row:
+                raise HTTPException(status_code=404, detail="模型配置不存在")
+            if row.get("deleted_at"):
+                return {"deleted": True, "default_profile_id": database.default_profile_id() or ""}
+            if reason := delete_reason(profile_id):
+                raise HTTPException(status_code=409, detail=reason)
+            candidates = api_candidates(exclude=profile_id)
+            replacement = candidates[0]["id"] if candidates else ""
+            try:
+                secret_store.delete_api_key(profile_id)
+            except Exception:
+                raise HTTPException(status_code=503, detail="无法删除系统凭据中的 API Key，配置未删除，请检查凭据访问权限后重试") from None
+            database.mark_profile_deleted(profile_id, replacement)
+            return {"deleted": True, "default_profile_id": database.default_profile_id() or ""}
 
     @app.post(
         "/v1/profiles/{profile_id}/test",
@@ -195,6 +294,18 @@ def create_app(
         dependencies=[Depends(authorize)],
     )
     async def test_profile(profile_id: str) -> TestResult:
+        async with submission_lock:
+            require_profile(profile_id)
+            if profile_id in testing_profiles:
+                raise HTTPException(status_code=409, detail="此配置正在测试，请等待完成")
+            testing_profiles.add(profile_id)
+        try:
+            return await test_profile_once(profile_id)
+        finally:
+            async with submission_lock:
+                testing_profiles.discard(profile_id)
+
+    async def test_profile_once(profile_id: str) -> TestResult:
         profile = database.get_profile(profile_id)
         if profile and profile.get("provider", "openai") != "openai":
             from .free_translate import WebProvider
@@ -245,8 +356,6 @@ def create_app(
             response_preview=str(preview)[:200],
             latency_ms=int((time.perf_counter() - started) * 1000),
         )
-
-    submission_lock = asyncio.Lock()
 
     @app.post("/v1/jobs", response_model=JobView, dependencies=[Depends(authorize)])
     async def create_job(
@@ -399,6 +508,7 @@ def create_app(
 
     @app.post("/v1/profiles/{profile_id}/selftest", response_model=JobView, dependencies=[Depends(authorize)])
     async def full_selftest(profile_id: str, request: dict) -> JobView:
+        require_profile(profile_id)
         # Stable request ID prevents duplicate paid tests when a response is lost.
         request_id = request.get("client_request_id")
         if not isinstance(request_id, str) or not re.fullmatch(r"[a-f0-9]{32}", request_id):
@@ -462,6 +572,7 @@ def create_app(
                 raise HTTPException(status_code=409, detail="只有失败、取消或暂停任务可以恢复")
             if row.get("cleanup_state"):
                 raise HTTPException(status_code=409, detail="测试文件已清理；恢复不会自动重新收费测试")
+            require_profile(row["profile_id"])
             view = job_view(row)
             if view.budget and view.budget.can_extend:
                 raise HTTPException(status_code=409, detail="此任务已到额度上限，请确认追加额度后继续；普通恢复不增加上限")
@@ -478,6 +589,7 @@ def create_app(
             row = database.get_job(job_id)
             if not row:
                 raise HTTPException(status_code=404, detail="任务不存在")
+            require_profile(row["profile_id"])
             try:
                 if database.budget_approval_matches(job_id, payload):
                     return job_view(row)
@@ -524,6 +636,3 @@ def create_app(
         return FileResponse(path, media_type=media, filename=name)
 
     return app
-
-
-app = create_app()

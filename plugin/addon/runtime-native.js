@@ -8,8 +8,24 @@ function createRuntimeNative(context) {
     result.initWithPath(path);
     return result;
   }
+  function platform() {
+    const os = Services.appinfo.OS, abi = Services.appinfo.XPCOMABI;
+    if (os === "WINNT" && abi.startsWith("x86_64")) return "windows-x64";
+    if (os === "Darwin" && /^(aarch64|arm64)/.test(abi)) return "macos-arm64";
+    if (os === "Darwin" && abi.startsWith("x86_64")) return "macos-x64";
+    return null;
+  }
+  function baseDir() {
+    const custom = Services.env.get("ZLB_DATA_DIR");
+    if (custom) return custom;
+    if (Services.appinfo.OS === "Darwin") {
+      const home = Services.dirsvc.get("Home", Ci.nsIFile).path;
+      return paths().join(home, "Library", "Application Support", "ZoteroLocalBilingual");
+    }
+    return paths().join(Services.env.get("LOCALAPPDATA"), "ZoteroLocalBilingual");
+  }
   async function launch(root, data, preflight) {
-    const process = await Subprocess.call({command: paths().join(root, "python", "python.exe"),
+    const process = await Subprocess.call({command: platform() === "windows-x64" ? paths().join(root, "python", "python.exe") : paths().join(root, "python", "bin", "python3.12"),
       arguments: ["-I", "-B", "-m", "zotero_local_bilingual.cli", preflight ? "--preflight" : "--managed",
         "--runtime-root", root, "--data-dir", data],
       environmentAppend: true, environment: {PYTHONHOME: null, PYTHONPATH: null, PYTHONUTF8: "1", PYTHONNOUSERSITE: "1"},
@@ -27,8 +43,21 @@ function createRuntimeNative(context) {
     return output;
   }
   return {
-    windowsX64: () => Services.appinfo.OS === "WINNT" && Services.appinfo.XPCOMABI.startsWith("x86_64"),
-    baseDir: () => Services.env.get("ZLB_DATA_DIR") || paths().join(Services.env.get("LOCALAPPDATA"), "ZoteroLocalBilingual"),
+    platform,
+    checkSystem() {
+      if (Services.appinfo.OS === "Darwin") {
+        // nsSystemInfo.version is Darwin's kernel version: 23 is macOS 14.
+        const kernel = Number(String(Services.sysinfo.getProperty("version")).split(".")[0]);
+        if (!Number.isFinite(kernel) || kernel < 23) throw new Error("Mac 引擎要求 macOS 14 或更新系统，请先确认系统版本");
+      }
+    },
+    baseDir,
+    samePath: (a, b) => Services.appinfo.OS === "WINNT"
+      ? a.replace(/\\/g, "/").replace(/\/$/, "").toLowerCase() === b.replace(/\\/g, "/").replace(/\/$/, "").toLowerCase()
+      : a.replace(/\/$/, "") === b.replace(/\/$/, ""),
+    async secureDirectory(path) {
+      if (Services.appinfo.OS === "Darwin") await io().setPermissions(path, 0o700);
+    },
     legacyURL: () => String(Zotero.Prefs.get("extensions.zotero.local-bilingual.serviceUrl", true) || "http://127.0.0.1:17865"),
     freeSpace: path => file(path).diskSpaceAvailable,
     delay: ms => Zotero.Promise.delay(ms),
@@ -52,6 +81,8 @@ function createRuntimeNative(context) {
           const name = entries.getNext();
           if (!safeEntry(name)) throw new Error("ZIP 含不安全路径，未解压");
           const entry = zip.getEntry(name);
+          // Release ZIPs contain regular files only; never follow an archive link.
+          if ((entry.permissions & 0o170000) === 0o120000) throw new Error("引擎 ZIP 含符号链接，未安装");
           total += entry.realSize;
           if (total > maximum) throw new Error("ZIP 解压体积超过清单");
           const target = paths().join(destination, ...name.replace(/\/$/, "").split("/"));
@@ -69,6 +100,11 @@ function createRuntimeNative(context) {
               }
             } catch (error) {throw new Error(`引擎文件解压失败：${name}：${String(error)}`);}
             finally {input.close();}
+            if (Services.appinfo.OS === "Darwin") {
+              // Streaming extraction does not restore UNIX modes automatically.
+              // Only the fixed interpreter entry point needs to be executable.
+              await io().setPermissions(target, name === "python/bin/python3.12" ? 0o700 : 0o600);
+            }
             const percent = Math.min(99, Math.floor(total / (maximum / 1.05) * 100));
             if (percent !== lastPercent) {lastPercent = percent; progress(percent);}
           }

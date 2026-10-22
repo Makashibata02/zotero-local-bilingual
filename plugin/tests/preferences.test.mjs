@@ -55,7 +55,7 @@ test('advanced save validation reports beside its own button',()=>{
 });
 test('all preference status areas use accessible adjacent blocks',async()=>{
   const html=await readFile(new URL('../addon/content/preferences.xhtml',import.meta.url),'utf8');
-  for(const id of ['zlb-test-status','zlb-open-test-status','zlb-install-status','zlb-options-status','zlb-workbench-open-status']) {
+  for(const id of ['zlb-test-status','zlb-open-test-status','zlb-install-status','zlb-options-status','zlb-workbench-open-status','zlb-default-profile-status','zlb-delete-profile-status']) {
     assert.match(html,new RegExp(`</html:button>\\s*<html:p id="${id}"[^>]*role="status"[^>]*aria-live="polite"`));
   }
   assert.ok(!html.includes('zlb-service-token'));assert.ok(!html.includes('checkService'));
@@ -90,14 +90,14 @@ test('engine choices are visible above model configuration without a collapsed d
 test('online preparation sends no model request and reports beside its button',async()=>{
   const h=harness();h.nodes.get('zlb-install-status').textContent='offline unchanged';
   await h.api.downloadEngine(h.document);
-  assert.deepEqual(h.runtimeCalls,[undefined]);assert.equal(h.calls.length,0);
+  assert.deepEqual(h.runtimeCalls,[undefined]);assert.equal(h.calls.length,2);assert.ok(h.calls.every(c=>c.url.endsWith("/v1/profiles")||c.url.endsWith("/default")));
   assert.match(h.nodes.get('zlb-online-install-status').textContent,/未调用翻译模型/);
   assert.equal(h.nodes.get('zlb-install-status').textContent,'offline unchanged');
   assert.equal(h.nodes.get('zlb-download-engine-button').disabled,false);
 });
 test('offline import uses chosen file and does not call a translation provider',async()=>{
   const h=harness();await h.api.importEngine(h.document);
-  assert.deepEqual(h.runtimeCalls,['/tmp/engine.zip']);assert.equal(h.calls.length,0);
+  assert.deepEqual(h.runtimeCalls,['/tmp/engine.zip']);assert.equal(h.calls.length,2);assert.ok(h.calls.every(c=>c.url.endsWith("/v1/profiles")||c.url.endsWith("/default")));
   assert.match(h.nodes.get('zlb-install-status').textContent,/离线导入成功/);
 });
 test('cancelled offline picker neither starts installation nor leaves disabled controls',async()=>{

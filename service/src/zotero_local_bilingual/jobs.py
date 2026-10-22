@@ -78,10 +78,9 @@ class JobRunner:
         if not job or job["status"] in {
             JobStatus.COMPLETED,
             JobStatus.CANCELLED,
-            JobStatus.FAILED,
         }:
             return False
-        if job["status"] == JobStatus.PAUSED:
+        if job["status"] in {JobStatus.PAUSED, JobStatus.FAILED}:
             self.database.update_job(job_id, status=JobStatus.CANCELLED, stage="cancelled")
             return True
         self.database.update_job(

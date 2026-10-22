@@ -8,7 +8,7 @@ import {transform} from 'esbuild';
 
 const {chromium}=await import(pathToFileURL(process.env.ZLB_BROWSER_MODULE).href);
 const root=fileURLToPath(new URL('../../',import.meta.url));
-const output=join(root,'output/ui-fix-030');
+const output=join(root,'output/ui-101-confirmation');
 await mkdir(output,{recursive:true});
 const html=(await readFile(new URL('../addon/content/confirm.xhtml',import.meta.url),'utf8'))
   .replace(/ onload="[^"]*"/,'');
@@ -28,7 +28,7 @@ try {
       const names=['简体中文','繁体中文','日语','韩语','法语','德语','西班牙语'];
       const ids=['zh-CN','zh-TW','ja','ko','fr','de','es'];
       const supported=Object.fromEntries(ids.map(id=>[id,{supported:true}]));
-      window.arguments=[{profiles:[{id:'default',name:'默认翻译服务',model:'deepseek-chat',provider:'openai'}],parallel:1,
+      window.arguments=[{profiles:[{id:'default',name:'默认翻译服务',model:'deepseek-chat',provider:'openai',is_default:true,has_api_key:true}],parallel:1,
         entries:[{attachment:{},metadata:{title:"UNSURE: self-supervised learning with Unknown Noise level and Stein's Unbiased Risk Estimate",authors_year:'Tachella 等 · 2025-02-11',filename:"Tachella 等 - 2025 - UNSURE self-supervised learning with Unknown Noise level and Stein's Unbiased Risk Estimate.pdf"}},
           {attachment:{_zlbDefault:false},metadata:{title:'补充材料',authors_year:'Tachella 等 · 2025',filename:'含中文路径的补充材料.pdf'}}],
         capabilities:{languages:ids.map((id,i)=>({id,name:names[i]})),providers:{openai:supported,bing:supported,tencent:{'zh-CN':{supported:true}}}},
@@ -41,18 +41,18 @@ try {
       window.Zotero.LocalBilingual.confirmation.onLoad(window);
       document.body.style.zoom=String(z);
     },zoom);
-    assert.equal(await page.locator('select').count(),0);
-    assert.equal(await page.locator('#model input').count(),3);
-    assert.equal(await page.locator('#language input').count(),7);
-    assert.equal(await page.locator('#language input:checked').inputValue(),'zh-CN');
+    assert.equal(await page.locator('select').count(),2);
+    assert.equal(await page.locator('#model option').count(),3);
+    assert.equal(await page.locator('#language option').count(),7);
+    assert.equal(await page.locator('#language').inputValue(),'zh-CN');
     assert.equal(await page.locator('#output input:checked').inputValue(),'dual');
     assert.equal(await page.locator('#files input:checked').count(),1);
     await page.screenshot({path:join(output,`confirmation-${label}-top.png`)});
     for(const [group,value] of [['language','ja'],['output','dual_and_mono'],['parallel','2']]) {
-      await page.locator(`#${group} input[value="${value}"]`).check();
-      assert.equal(await page.locator(`#${group} input:checked`).inputValue(),value);
+      if(group==='language')await page.locator('#language').selectOption(value);else await page.locator(`#${group} input[value="${value}"]`).check();
+      assert.equal(await page.locator(group==='language' ? '#language' : `#${group} input:checked`).inputValue(),value);
     }
-    const language=await page.locator('#language input:checked').elementHandle();
+    const language=await page.locator('#language').elementHandle();
     await page.locator('#files input[value="1"]').check();
     assert.equal(await page.evaluate(element=>element.isConnected,language),true);
     assert.match(await page.locator('#limits').innerText(),/两篇并行/);
@@ -73,11 +73,11 @@ try {
     });
     assert.ok(bounds.cardsInside);assert.ok(!bounds.overlap);
     assert.ok(bounds.buttonBottom<=height+1);assert.ok(bounds.footerBottom<=height+1);
-    await page.locator('#model input[value="free-tencent"]').check();
-    assert.equal(await page.locator('#language input:checked').inputValue(),'zh-CN');
-    assert.ok(await page.locator('#language input[value="ja"]').isDisabled());
-    await page.locator('#model input[value="default"]').check();
-    await page.locator('#language input[value="ja"]').check();
+    await page.locator('#model').selectOption('free-tencent');
+    assert.equal(await page.locator('#language').inputValue(),'zh-CN');
+    assert.ok(await page.locator('#language option[value="ja"]').isDisabled());
+    await page.locator('#model').selectOption('default');
+    await page.locator('#language').selectOption('ja');
     await page.locator('#files input[value="0"]').uncheck();
     await page.locator('#files input[value="1"]').uncheck();
     assert.ok(await page.locator('#confirm').isDisabled());

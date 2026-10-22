@@ -6,20 +6,21 @@
     * { box-sizing: border-box; }
     html { height: 100%; background: #f4f6fa; }
     body { height: 100%; margin: 0; display: flex; flex-direction: column; color: #202a3b; font: 14px/1.5 system-ui,sans-serif; }
-    header { padding: 18px 24px 12px; flex: 0 0 auto; }
+    header { padding: 14px 20px 10px; flex: 0 0 auto; }
     h1 { margin: 0; font-size: 21px; }
     header p { margin: 4px 0 0; color: #536177; }
-    main { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 24px 18px; }
-    fieldset { min-width: 0; margin: 0 0 16px; padding: 0; border: 0; }
+    main { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 20px 12px; }
+    fieldset { min-width: 0; margin: 0 0 12px; padding: 0; border: 0; }
     legend,.section-label { font-weight: 600; padding: 0; margin: 0 0 8px; }
-    #files { max-height: 160px; overflow-y: auto; margin-bottom: 16px; background: #fff; border: 1px solid #c9d2df; border-radius: 8px; }
+    #files { max-height: 120px; overflow-y: auto; margin-bottom: 16px; background: #fff; border: 1px solid #c9d2df; border-radius: 8px; }
     #files label { display: flex; gap: 10px; padding: 12px; align-items: flex-start; cursor: pointer; }
     #files label + label { border-top: 1px solid #e3e8ef; }
     #files span { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
     #files input { flex: 0 0 auto; width: 18px; height: 18px; margin: 3px 0 0; }
     .choices { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
-    #model { grid-template-columns: repeat(2,minmax(0,1fr)); }
-    #language { grid-template-columns: repeat(3,minmax(0,1fr)); }
+    select { display:block; width:100%; max-width:100%; min-height:38px; padding:7px 9px; border:1px solid #9aabc1; border-radius:6px; background:#fff; color:inherit; font:inherit; }
+    .hint { margin:4px 0 0; color:#536177; font-size:12px; }
+    .hint:empty { display:none; }
     #output { grid-template-columns: repeat(3,minmax(0,1fr)); }
     .choice { display: flex; align-items: flex-start; gap: 10px; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid #c9d2df; border-radius: 8px; background: #fff; cursor: pointer; }
     .choice.selected { border-color: #2863c5; background: #edf4ff; box-shadow: inset 0 0 0 1px #2863c5; }
@@ -27,7 +28,7 @@
     .choice input { appearance: none; -moz-appearance: none; flex: 0 0 auto; width: 18px; height: 18px; margin: 2px 0 0; border: 2px solid #6d7c90; border-radius: 50%; background: #fff; }
     .choice input:checked { border: 5px solid #2863c5; }
     .choice input:disabled { border-color: #a5afbd; }
-    input:focus-visible,button:focus-visible { outline: 3px solid #1768d1; outline-offset: 3px; }
+    input:focus-visible,select:focus-visible,button:focus-visible { outline: 3px solid #1768d1; outline-offset: 3px; }
     .choice span { min-width: 0; overflow-wrap: anywhere; }
     .choice strong { display: block; font-weight: 500; }
     .choice small { display: block; margin-top: 2px; color: #536177; font-size: 12px; }
@@ -39,8 +40,8 @@
     #confirm:disabled { color: #65758b; background: #e4e9f1; border-color: #c9d2df; cursor: not-allowed; }
     #error { margin: 8px 0 0; color: #a21e2d; white-space: pre-wrap; }
     #error:empty { display: none; }
-    @media (max-width: 540px) { header,footer { padding-left: 16px; padding-right: 16px; } main { padding-left: 16px; padding-right: 16px; } #model,#output { grid-template-columns: 1fr; } #language,.choices { grid-template-columns: repeat(2,minmax(0,1fr)); } }
-    @media (max-width: 360px) { #language,.choices { grid-template-columns: 1fr; } }
+    @media (max-width: 540px) { header,footer { padding-left: 16px; padding-right: 16px; } main { padding-left: 16px; padding-right: 16px; } #output { grid-template-columns: 1fr; } .choices { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+    @media (max-width: 360px) { .choices { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body onload="window.arguments[0].plugin.confirmation.onLoad(window)">
@@ -48,8 +49,8 @@
   <main>
     <p class="section-label" id="files-heading">待翻译文件</p>
     <div id="files" role="group" aria-labelledby="files-heading" onchange="window.arguments[0].plugin.confirmation.changed(window)"></div>
-    <fieldset><legend>翻译模型／配置</legend><div id="model" class="choices"></div></fieldset>
-    <fieldset><legend>目标语言</legend><div id="language" class="choices"></div></fieldset>
+    <fieldset><legend><label for="model">翻译模型／配置</label></legend><select id="model" onchange="window.arguments[0].plugin.confirmation.changed(window)"></select><p id="model-note" class="hint"></p></fieldset>
+    <fieldset><legend><label for="language">目标语言</label></legend><select id="language" onchange="window.arguments[0].plugin.confirmation.changed(window)"></select><p id="language-note" class="hint" role="status" aria-live="polite"></p></fieldset>
     <fieldset><legend>输出方式</legend><div id="output" class="choices"></div></fieldset>
     <fieldset><legend>全局同时处理上限</legend><div id="parallel" class="choices"></div></fieldset>
   </main>

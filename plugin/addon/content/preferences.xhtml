@@ -26,7 +26,7 @@
 <html:p id="zlb-version"></html:p><html:p id="zlb-runtime-version" class="zlb-hint"></html:p>
 <html:section id="zlb-engine-setup" class="engine-setup" aria-labelledby="zlb-engine-heading">
 <html:h3 id="zlb-engine-heading">安装翻译引擎</html:h3>
-<html:p class="zlb-hint">先选择在线下载或离线导入，再配置翻译服务。引擎约 415 MB；安装只准备本机环境，不调用翻译模型，也不需要 GitHub Token。</html:p>
+<html:p class="zlb-hint">先选择在线下载或离线导入，再配置翻译服务。引擎约 415–430 MB（随平台不同）；安装只准备本机环境，不调用翻译模型，也不需要 GitHub Token。</html:p>
 <html:div class="engine-choices">
 <html:div class="engine-choice">
 <html:h4>在线下载（推荐）</html:h4>
@@ -36,17 +36,22 @@
 </html:div>
 <html:div class="engine-choice">
 <html:h4>离线导入</html:h4>
-<html:p class="zlb-hint">GitHub 无法直连时，选择提前取得的匹配引擎 ZIP；无需 Python、uv 或命令行。</html:p>
+<html:p class="zlb-hint">GitHub 无法直连时，选择匹配版本与平台（Windows／Mac 芯片）的引擎 ZIP；无需 Python、uv 或命令行。</html:p>
 <html:button id="zlb-import-engine-button" type="button" onclick="Zotero.LocalBilingual.preferences.importEngine(window.document)">选择离线 ZIP 并安装</html:button>
 <html:p id="zlb-install-status" class="feedback" role="status" aria-live="polite"></html:p>
 </html:div>
 </html:div>
 <html:button id="zlb-release-page-button" type="button" onclick="Zotero.LocalBilingual.preferences.openEngineRelease(window.document)">打开 GitHub 下载页</html:button>
 <html:p id="zlb-release-page-status" class="feedback" role="status" aria-live="polite"></html:p>
-<html:p class="zlb-hint">在线下载要求公开 Release；私有审阅阶段请登录 GitHub 下载 ZIP 并离线导入。未安装时测试或翻译也会尝试在线准备，失败可改用离线入口。</html:p>
+<html:p class="zlb-hint">在线下载要求匹配版本已发布到公开 Release；未发布的本地版本请使用离线 ZIP。未安装时测试或翻译也会尝试在线准备，失败可改用离线入口。</html:p>
 </html:section>
 
 <html:div class="zlb-field"><html:label for="zlb-profile-select">已保存的模型配置（选择不调用模型）</html:label><html:select id="zlb-profile-select" onchange="Zotero.LocalBilingual.preferences.profileChanged(window.document)"></html:select></html:div>
+<html:button id="zlb-default-profile-button" type="button" disabled="disabled" onclick="Zotero.LocalBilingual.preferences.setDefaultProfile(window.document)">设为默认 API 模型</html:button>
+<html:p id="zlb-default-profile-status" class="feedback" role="status" aria-live="polite"></html:p>
+<html:button id="zlb-delete-profile-button" type="button" disabled="disabled" onclick="Zotero.LocalBilingual.preferences.deleteProfile(window.document)">删除配置</html:button>
+<html:p id="zlb-delete-profile-status" class="feedback" role="status" aria-live="polite"></html:p>
+<html:p id="zlb-profile-hint" class="zlb-hint" role="status" aria-live="polite"></html:p>
 <html:div class="zlb-field"><html:label for="zlb-profile-name">配置名称</html:label><html:input id="zlb-profile-name" maxlength="100"/></html:div>
 <html:label><html:input id="zlb-save-new" type="checkbox"/> 另存为新配置（新配置需填写 Key）</html:label>
 <html:div class="zlb-field"><html:label for="zlb-provider">翻译服务</html:label>
@@ -60,7 +65,7 @@
 <html:div id="zlb-api-fields">
 <html:div class="zlb-field"><html:label for="zlb-base-url">API 地址</html:label><html:input id="zlb-base-url" type="url" placeholder="https://api.example.com/v1"/></html:div>
 <html:div class="zlb-field"><html:label for="zlb-model">模型名称</html:label><html:input id="zlb-model"/></html:div>
-<html:div class="zlb-field"><html:label for="zlb-api-key">API Key（留空保留已保存的 Key）</html:label><html:input id="zlb-api-key" type="password" autocomplete="off"/><html:span class="zlb-hint">存入 Windows 凭据管理器，不写入插件配置。PDF 中需翻译的文本会发送给所选服务。</html:span></html:div>
+<html:div class="zlb-field"><html:label for="zlb-api-key">API Key（留空保留已保存的 Key）</html:label><html:input id="zlb-api-key" type="password" autocomplete="off"/><html:span class="zlb-hint">存入系统安全存储（Windows 凭据管理器／macOS 钥匙串），不写入插件配置。PDF 中需翻译的文本会发送给所选服务。</html:span></html:div>
 </html:div>
 <html:p id="zlb-test-cost" class="zlb-hint"></html:p>
 <html:button id="zlb-test-button" type="button" onclick="Zotero.LocalBilingual.preferences.saveAndTest(window.document)">保存并完整测试</html:button>

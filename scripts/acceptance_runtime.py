@@ -26,9 +26,9 @@ def main():
     env = {k:v for k,v in os.environ.items() if k not in {"PYTHONPATH","PYTHONHOME","VIRTUAL_ENV"}}
     env["PATH"] = str(runtime / "python")
     env["PYTHONUTF8"] = "1"
-    process = subprocess.Popen([str(runtime / "python/python.exe"), "-I", "-m", "zotero_local_bilingual.cli",
+    process = subprocess.Popen([str(runtime / ("python/python.exe" if os.name == "nt" else "python/bin/python3.12")), "-I", "-m", "zotero_local_bilingual.cli",
         "--managed", "--runtime-root", str(runtime), "--data-dir", str(data), "--idle-seconds", "20"],
-        env=env, creationflags=subprocess.CREATE_NO_WINDOW,
+        env=env, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         stdout=(data / "stdout.log").open("wb"), stderr=(data / "stderr.log").open("wb"))
     summary = {"paid_api_calls":0,"tests":[]}
     summary_path=ROOT/f'output/acceptance-{version.replace(".","")}'/('author-results.json' if args.case=='rydberg' else 'results.json')

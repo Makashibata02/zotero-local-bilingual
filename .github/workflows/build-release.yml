@@ -1,19 +1,26 @@
-name: Build Windows release candidates
+name: Build Windows and macOS candidates
 on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+  UV_LINK_MODE: copy
 jobs:
   windows:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
       - uses: astral-sh/setup-uv@v6
         with:
           version: '0.12.10'
+      - id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content plugin/addon/manifest.json | ConvertFrom-Json).version
+          "value=$version" >> $env:GITHUB_OUTPUT
       - shell: pwsh
         run: |
           uv python install 3.12.14
@@ -21,6 +28,72 @@ jobs:
           $env:ZLB_DATA_DIR = Join-Path $pwd 'output/ci-test-state'
           uv run pytest -q
           uv run python scripts/build_runtime.py --repository "${{ github.repository }}" --uv (Get-Command uv).Source
+          uv run python scripts/acceptance_runtime_handoff.py --runtime "output/runtime-build/${{ steps.version.outputs.value }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-windows-x64
+          path: dist/release-${{ steps.version.outputs.value }}/*
+          compression-level: 0
+          retention-days: 14
+  macos:
+    needs: windows
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: macos-arm64
+            arch: aarch64
+          - runner: macos-15-intel
+            platform: macos-x64
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.10'
+      - uses: actions/download-artifact@v4
+        with:
+          name: engine-windows-x64
+          path: dist/release-${{ needs.windows.outputs.version }}
+      - shell: bash
+        env:
+          ZLB_DATA_DIR: ${{ github.workspace }}/output/ci-test-state
+          MACOSX_DEPLOYMENT_TARGET: '14.0'
+        run: |
+          uv python install 3.12.14
+          uv sync --managed-python --python 3.12.14 --extra dev --locked
+          uv run pytest -q
+          python_home="$(uv python dir)/cpython-3.12.14-macos-${{ matrix.arch }}-none"
+          uv run python scripts/build_macos_runtime.py --platform "${{ matrix.platform }}" --python-home "$python_home" --assets-from "dist/release-${{ needs.windows.outputs.version }}/zlb-engine-${{ needs.windows.outputs.version }}-windows-x64.zip" --repository "${{ github.repository }}"
+          uv run python scripts/verify_macos_binaries.py --runtime "output/runtime-build/${{ needs.windows.outputs.version }}-${{ matrix.platform }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-${{ matrix.platform }}
+          path: |
+            dist/release-${{ needs.windows.outputs.version }}/*-${{ matrix.platform }}.zip
+            dist/release-${{ needs.windows.outputs.version }}/engine-manifest-${{ matrix.platform }}.json
+          compression-level: 0
+          retention-days: 14
+  package:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: engine-*
+          merge-multiple: true
+          path: dist/release-${{ needs.windows.outputs.version }}
+      - run: |
+          python scripts/collect_engines.py
           corepack enable
           cd plugin
           pnpm install --frozen-lockfile
@@ -28,11 +101,13 @@ jobs:
           pnpm test
           pnpm run build
           cd ..
-          uv run python scripts/package_release.py --repository "${{ github.repository }}"
+          python scripts/package_release.py --repository "${{ github.repository }}"
+          python scripts/verify_release.py
       - uses: actions/upload-artifact@v4
         with:
-          name: local-bilingual-1.0.0-windows
-          path: dist/release-1.0.0/*
+          name: local-bilingual-${{ needs.windows.outputs.version }}-candidates
+          path: dist/release-${{ needs.windows.outputs.version }}/*
+          compression-level: 0
           retention-days: 14
-# This builds candidates only. A maintainer reviews the artifacts before
-# publishing them in a GitHub Release tagged v1.0.0.
+# Manual builds only: no credentials, automatic Release or publishing permissions.
+# Native engine tests do not replace Zotero UI / Keychain / Gatekeeper acceptance.
