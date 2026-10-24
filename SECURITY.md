@@ -2,7 +2,7 @@
 
 ## Data handling
 
-The service listens on loopback and requires a local service token. Model API keys are stored in Windows Credential Manager, not source files. User settings, jobs, usage audits, outputs, and runtime caches live outside the repository under `%LOCALAPPDATA%\ZoteroLocalBilingual`.
+The service listens on loopback and requires a local service token. Model API keys are stored in Windows Credential Manager or macOS Keychain, not source files. User settings, jobs, usage audits, outputs, and runtime caches live outside the repository under `%LOCALAPPDATA%\ZoteroLocalBilingual` on Windows or `~/Library/Application Support/ZoteroLocalBilingual` on macOS.
 
 Document text is sent to the selected provider for translation. Do not use a remote provider for sensitive documents unless its data policy is acceptable to you. The engine bundle is verified by size and SHA-256 before activation.
 
@@ -12,4 +12,4 @@ Use the repository's **Security → Report a vulnerability** if private reportin
 
 Include the plugin/runtime version, a sanitized reproduction using a generated PDF, expected behavior, and impact. API key values are never needed. If a key was exposed, revoke it with the provider; deleting a visible file does not remove it from Git history.
 
-The current maintained version is 1.0.0. Source, Git history, and release archives are checked before publication. Engine downloads are anonymous and do not include browser credentials or a GitHub token.
+The current maintained version is 1.1.2. Source, Git history, and release archives are checked before publication. Engine downloads are anonymous and do not include browser credentials or a GitHub token.
