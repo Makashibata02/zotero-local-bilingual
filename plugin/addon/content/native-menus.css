@@ -1,0 +1,11 @@
+/* Required on EVERY platform in standalone chrome HTML windows. Order follows
+   toolkit's widgets.css; the full global theme would also restyle HTML buttons. */
+@import url("chrome://global/skin/popup.css");
+@import url("chrome://global/skin/menu.css");
+
+/* These normally come from the host's global theme. Keep fallbacks inside the
+   HTML select popup so the surrounding page keeps its own colors and layout. */
+#ContentSelectDropdown {
+  --text-color-disabled: GrayText;
+  --panel-separator-color: ThreeDShadow;
+}

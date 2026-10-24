@@ -23,7 +23,7 @@ def main():
     manifest.pop("icons", None)
     manifest["applications"]["zotero"]["id"] = "zlb-ui-test@local.invalid"
     (extension / "manifest.json").write_text(json.dumps(manifest))
-    for name in ("confirm.xhtml", "workbench.xhtml", "macos-menus.css"):
+    for name in ("confirm.xhtml", "workbench.xhtml", "macos-menus.css", "native-menus.css"):
         shutil.copyfile(root / "plugin/addon/content" / name, extension / "content" / name)
     shutil.copyfile(root / "plugin/build/content/scripts/local-bilingual.js", extension / "content/plugin.js")
     # Match the preferences host's real platform/theme styles, without invoking
@@ -39,6 +39,9 @@ def main():
     ) + '\n<window id="zotero-prefs" xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul" style="overflow:auto;">' + fragment + "</window>"
     (extension / "content/settings.xhtml").write_text(settings)
     preferences = {
+        "extensions.zoteroWinWordIntegration.skipInstallation": True,
+        "extensions.zoteroMacWordIntegration.skipInstallation": True,
+        "extensions.zoteroOpenOfficeIntegration.skipInstallation": True,
         "extensions.autoDisableScopes": 0, "extensions.enabledScopes": 15,
         "extensions.startupScanScopes": 15, "extensions.zotero.useDataDir": True,
         "extensions.zotero.dataDir": str(base / "data"),

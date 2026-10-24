@@ -56,23 +56,23 @@ function harness(isMac) {
   return {api:Zotero.LocalBilingual,window,document,nodes,head,theme,requests};
 }
 
-function assertMacTheme(h) {
+function assertNativeTheme(h) {
   assert.equal(h.head.children.length,2);
   assert.equal(h.head.children[0],h.theme);
   const link=h.head.children[1];
   assert.equal(link.localName,'link');
   assert.equal(link.namespaceURI,'http://www.w3.org/1999/xhtml');
   assert.equal(link.rel,'stylesheet');
-  assert.equal(link.href,'chrome://local-bilingual/content/macos-menus.css');
+  assert.equal(link.href,'chrome://local-bilingual/content/native-menus.css');
 }
 
 for(const isMac of [true,false]) {
   const platform=isMac?'Mac':'Windows';
-  test(`${platform} confirmation loads only its platform theme and retains HTML selections`,()=>{
+  test(`${platform} confirmation loads the shared native theme and retains HTML selections`,()=>{
     const h=harness(isMac),model=h.nodes.get('model'),language=h.nodes.get('language');
     h.api.confirmation.onLoad(h.window);
     h.api.confirmation.onLoad(h.window);
-    if(isMac)assertMacTheme(h);else assert.deepEqual(h.head.children,[h.theme]);
+    assertNativeTheme(h);
     assert.equal(h.document.getElementById('model'),model);
     assert.equal(h.document.getElementById('language'),language);
     assert.equal(model.localName,'select');assert.equal(language.localName,'select');
@@ -82,14 +82,14 @@ for(const isMac of [true,false]) {
     assert.equal(h.window.arguments[0].ready,true);
   });
 
-  test(`${platform} workbench initializes its menus without duplicate or cross-platform styles`,async()=>{
+  test(`${platform} workbench initializes its menus with one shared native theme`,async()=>{
     const h=harness(isMac),filter=h.nodes.get('zlb-filter'),parallel=h.nodes.get('zlb-parallel');
     await h.api.workbench.onLoad(h.window);
     await h.api.workbench.onLoad(h.window);
     // Also exercise the stylesheet's own idempotence if the controller reloads.
     h.window._zlbLoaded=false;
     await h.api.workbench.onLoad(h.window);
-    if(isMac)assertMacTheme(h);else assert.deepEqual(h.head.children,[h.theme]);
+    assertNativeTheme(h);
     assert.equal(h.document.getElementById('zlb-filter'),filter);
     assert.equal(h.document.getElementById('zlb-parallel'),parallel);
     assert.equal(filter.localName,'select');assert.equal(parallel.localName,'select');
@@ -98,3 +98,16 @@ for(const isMac of [true,false]) {
     assert.equal(h.requests.length,4);
   });
 }
+
+// These are the actual chrome documents; loading the theme before `load` avoids
+// a first-click race. Unit DOM mocks alone do not verify native popup rendering.
+test('both standalone documents preload the native popup theme', async()=>{
+  for(const name of ['confirm.xhtml','workbench.xhtml']) {
+    const html=await readFile(new URL('../addon/content/'+name,import.meta.url),'utf8');
+    assert.match(html,/<head><link id="zlb-native-menu-style" rel="stylesheet" href="chrome:\/\/local-bilingual\/content\/native-menus\.css"\/>/);
+  }
+});
+test('isolated UI profiles skip Word auto-installation', async()=>{
+  const fixture=await readFile(new URL('../../scripts/prepare_macos_ui_check.py',import.meta.url),'utf8');
+  assert.match(fixture,/"extensions\.zoteroWinWordIntegration\.skipInstallation": True/);
+});

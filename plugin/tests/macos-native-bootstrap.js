@@ -9,7 +9,7 @@ function startup({rootURI}) {
   let popup;
   const check=(ok,message)=>{if(!ok)throw Error(message);};
   const delay=ms=>Zotero.Promise.delay(ms);
-  const mockZotero={isMac:true,Prefs:{get:k=>k.endsWith('serviceToken')?'test-token':undefined,set(){}},logError:e=>report.checks.push({loggedError:String(e)})};
+  const mockZotero={isMac:Services.appinfo.OS === "Darwin",Prefs:{get:k=>k.endsWith('serviceToken')?'test-token':undefined,set(){}},logError:e=>report.checks.push({loggedError:String(e)})};
   const context={Zotero:mockZotero,URLSearchParams:win.URLSearchParams,fetch:async(url)=>{
    report.requests.push(String(url));
    if(String(url).includes('/v1/jobs?'))return new win.Response(JSON.stringify([{id:'fixture',status:'running',stage:'Translate Paragraphs',progress:42,metadata:{title:'Generated test paper with a long title for layout verification',filename:'生成的测试文件.pdf'},service_name:'测试翻译服务 · deepseek-flash',target_language:'zh-CN',metrics:{total_tokens:1234,request_count:4}}]));
@@ -41,6 +41,7 @@ function startup({rootURI}) {
   async function menu(id,label,expectedCount,fixed=true,keys=[]) {
    const d=popup.document,s=d.getElementById(id);s.scrollIntoView({block:'nearest'});s.focus();
    await delay(200);
+   popup.focus();try{Services.focus.activeWindow=popup;}catch{};await delay(150);
    const input=popup.windowUtils.setHandlingUserInput(true);try{s.showPicker();}finally{input.destruct();}
    await delay(250);
    const mp=d.getElementById('ContentSelectDropdownPopup');check(mp,'Missing native popup for '+label);
@@ -75,11 +76,10 @@ function startup({rootURI}) {
   function change(id,value){const s=popup.document.getElementById(id);s.value=value;s.dispatchEvent(new popup.Event('change',{bubbles:true}));}
   function close(){if(popup&&!popup.closed){popup.clearTimeout(popup._zlbTimer);popup.close();}popup=null;}
   try {
-   mockZotero.isMac=false;await open('confirm',680,760);await menu('model','baseline-model',4,false);close();
-   mockZotero.isMac=true;
+   await open('confirm',680,760);popup.document.getElementById('zlb-native-menu-style').remove();await delay(200);await menu('model','baseline-model',4,false);close();
    for(const [label,width,height,zoom] of [['normal',680,760,1],['narrow',480,560,1],['zoom125',680,760,1.25]]) {
     const d=await open('confirm',width,height,zoom);
-    check(d.querySelectorAll('#zlb-mac-menu-style').length===1,'Missing or duplicate stylesheet');
+    check(d.querySelectorAll('#zlb-native-menu-style').length===1,'Missing or duplicate stylesheet');
     await snapshot('confirm-'+label);
     await menu('model','model-'+label,4);
     await menu('language','language-'+label,7);
@@ -88,8 +88,11 @@ function startup({rootURI}) {
      check(d.getElementById('model').value==='free-bing','Keyboard did not skip unavailable model');
      await menu('language','keyboard-language',7,true,['ArrowDown','ArrowDown','Enter']);
      check(d.getElementById('language').value==='ja','Keyboard language selection failed');
-     await menu('language','keyboard-escape',7,true,['ArrowDown','Escape']);
-     check(d.getElementById('language').value==='ja','Escape committed a different language');
+     const escaped=await menu('language','keyboard-escape',7,true,['ArrowDown','Escape']);
+     check(escaped.keyboard.at(-1).state==='closed','Escape did not close the native menu');
+     // Windows commits arrow-key changes immediately; macOS commits with Enter.
+     const expectedEscape=Services.appinfo.OS==='WINNT'?escaped.keyboard[0].value:'ja';
+     check(d.getElementById('language').value===expectedEscape,'Escape differs from native platform selection behavior');
     }
     change('language','ja');change('model','free-tencent');
     check(d.getElementById('language').value==='zh-CN','Unsupported language not reset');
@@ -113,7 +116,7 @@ function startup({rootURI}) {
     await snapshot('workbench-'+label);close();
    }
    const settings=await open('settings',680,900);
-   settings.getElementById('zlb-settings').setAttribute('data-platform','macos');
+   if(mockZotero.isMac)settings.getElementById('zlb-settings').setAttribute('data-platform','macos');
    settings.getElementById('zlb-version').textContent='本地双语 PDF __VERSION__ · 本地适配验证';
    const profiles=settings.getElementById('zlb-profile-select');
    for(const [value,title] of [['default','默认模型 · deepseek-flash'],['test','另一个测试模型']]) {
