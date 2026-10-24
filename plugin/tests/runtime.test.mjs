@@ -147,3 +147,37 @@ test('wrong runtime metadata is rejected before executing preflight',async()=>{
   await assert.rejects(h.manager.ensure(),/平台或版本不符/);
   assert.equal(h.started,0);assert.ok(!h.events.some(e=>e[0]==='preflight'));
 });
+
+test('Mac network interruption flushes the buffered prefix and resumes it',async()=>{
+  for (const platform of ['macos-arm64','macos-x64']) {
+    const h=harness({platform,interrupt:true});
+    await assert.rejects(h.manager.ensure(),/disconnected/);
+    assert.equal(h.started,0);
+    await h.manager.ensure();
+    assert.equal(h.requests[1].headers.Range,'bytes=2-');
+    assert.equal(h.started,1);
+  }
+});
+
+test('Mac batches small network chunks while Windows retains per-chunk writes',async()=>{
+  const bytes=Uint8Array.from({length:4*1024*1024+37},(_,i)=>i%251);
+  for (const platform of ['macos-arm64','macos-x64','windows-x64']) {
+    const chunks=[];for(let i=0;i<bytes.length;i+=16384)chunks.push(bytes.subarray(i,i+16384));
+    const writes=[];
+    const io={exists:async()=>false,write:async(_,value)=>writes.push(Uint8Array.from(value))};
+    const request=async()=>new Response(new ReadableStream({start(c){for(const chunk of chunks)c.enqueue(chunk);c.close();}}));
+    const manager=new RuntimeManager({},io,{},request);
+    await manager.download({platform,url:'https://github.com/test/engine',size:bytes.length},'/download');
+    assert.deepEqual(Buffer.concat(writes),Buffer.from(bytes));
+    assert.equal(writes.length,platform==='windows-x64'?chunks.length+1:3);
+  }
+});
+
+test('Mac refuses oversized downloads without persisting excess bytes',async()=>{
+  const writes=[];
+  const io={exists:async()=>false,write:async(_,value)=>writes.push(Uint8Array.from(value))};
+  const request=async()=>new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array([1,2]));c.enqueue(new Uint8Array([3,4,5]));c.close();}}));
+  const manager=new RuntimeManager({},io,{},request);
+  await assert.rejects(manager.download({platform:'macos-arm64',url:'https://github.com/test/engine',size:4},'/download'),/超过/);
+  assert.deepEqual(Buffer.concat(writes),Buffer.from([1,2]));
+});

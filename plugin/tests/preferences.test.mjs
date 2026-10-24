@@ -7,13 +7,13 @@ import {transform} from 'esbuild';
 const source=await readFile(new URL('../src/main.ts',import.meta.url),'utf8');
 const {code}=await transform(source.replace(/^import[^\n]*\r?\n/,''),{loader:'ts',format:'iife'});
 
-function harness({copyFails=false, deploymentVerified=false, zipChoice="/tmp/engine.zip", engineFails=false}={}) {
+function harness({copyFails=false, deploymentVerified=false, zipChoice="/tmp/engine.zip", engineFails=false, isMac=false}={}) {
   const prefs={},calls=[],nodes=new Map(),opened=[],runtimeCalls=[],urls=[];
   const ids=[...source.matchAll(/"(zlb-[a-z-]+)"/g)].map(m=>m[1]);
-  for(const id of ids)nodes.set(id,{value:'',textContent:'',checked:false,disabled:false,replaceChildren(){},append(){}});
+  for(const id of ids)nodes.set(id,{value:'',textContent:'',checked:false,disabled:false,replaceChildren(){},append(){},setAttribute(k,v){this[k]=v;}});
   nodes.get('zlb-provider').value='bing';
   const document={getElementById:id=>nodes.get(id)};
-  const Zotero={Prefs:{get:key=>prefs[key.split('.').pop()],set:(key,val)=>prefs[key.split('.').pop()]=val},
+  const Zotero={isMac,Prefs:{get:key=>prefs[key.split('.').pop()],set:(key,val)=>prefs[key.split('.').pop()]=val},
     Promise:{delay:async()=>{}},launchFile:path=>opened.push(path),launchURL:url=>urls.push(url),logError(){}};
   vm.runInNewContext(code,{Zotero,Headers,FormData,Blob,crypto:webcrypto,
     runtimeManager:{ensure:async (feedback,path)=>{runtimeCalls.push(path);feedback('引擎就绪');if(engineFails)throw Error('HTTP 503');return{url:'http://127.0.0.1:1234',token:'local-token'};}},
@@ -30,6 +30,13 @@ function harness({copyFails=false, deploymentVerified=false, zipChoice="/tmp/eng
     }});
   return{api:Zotero.LocalBilingual.preferences,document,nodes,calls,opened,prefs,runtimeCalls,urls};
 }
+
+test('Mac button layout is enabled only inside the Mac preferences pane',()=>{
+  for(const isMac of [true,false]) {
+    const h=harness({isMac});h.api.onLoad(h.document);
+    assert.equal(h.nodes.get('zlb-settings')['data-platform'],isMac?'macos':undefined);
+  }
+});
 
 test('free mode disables LLM-only options and does not require a key',async()=>{
   const h=harness();h.api.providerChanged(h.document);

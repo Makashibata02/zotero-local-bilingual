@@ -7,6 +7,11 @@
 #zlb-settings input,#zlb-settings select,#zlb-settings textarea {box-sizing:border-box;display:block;width:100%;padding:8px;font:inherit;}
 #zlb-settings input[type="checkbox"] {display:inline-block;width:auto;}
 #zlb-settings button {padding:8px 12px;font:inherit;}
+/* Cocoa's native button height does not accommodate our font and padding. */
+#zlb-settings[data-platform="macos"] button {appearance:none;-moz-appearance:none;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-height:36px;height:auto;line-height:1.4;text-align:center;vertical-align:middle;white-space:normal;border:1px solid #9aabc1;border-radius:6px;background:var(--material-button,ButtonFace);color:var(--fill-primary,ButtonText);}
+#zlb-settings[data-platform="macos"] button:hover:not(:disabled) {background:var(--material-button-hover,rgba(127,127,127,.15));}
+#zlb-settings[data-platform="macos"] button:disabled {opacity:.55;}
+#zlb-settings[data-platform="macos"] button:focus-visible {outline:2px solid AccentColor;outline-offset:2px;}
 #zlb-settings textarea {min-height:100px;resize:vertical;}
 #zlb-settings p {line-height:1.55;}
 #zlb-settings .feedback {white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 16px;min-height:1.5em;}

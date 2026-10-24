@@ -18,7 +18,7 @@ def translate(spec_path: Path) -> int:
     started = time.perf_counter()
     from .runtime_assets import configure_assets
     configure_assets()
-    from babeldoc.docvision.doclayout import DocLayoutModel
+    from .layout_model import load_layout_model
     from babeldoc.format.pdf import high_level
     from babeldoc.format.pdf.translation_config import (
         TranslationConfig,
@@ -43,7 +43,7 @@ def translate(spec_path: Path) -> int:
     install_free_document_policy()
     layout_patch = install_babeldoc_layout_patch()
     emit({"type": "progress", "stage": "load_layout_model", "progress": 1.0})
-    layout_model = DocLayoutModel.load_onnx()
+    layout_model = load_layout_model()
     if free:
         from .free_translate import FreeTranslator
         translator = FreeTranslator(spec)

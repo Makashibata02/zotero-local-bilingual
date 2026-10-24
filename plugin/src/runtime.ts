@@ -196,16 +196,45 @@ export class RuntimeManager {
       await this.io.write(file, new Uint8Array());
     }
     const reader = response.body.getReader();
+    // Network chunks can be only a few KB. On Mac, coalesce them so each
+    // IOUtils call does useful work instead of reopening the file for each chunk.
+    const buffer = manifest.platform.startsWith("macos-") ? new Uint8Array(4 * 1024 * 1024) : null;
+    let buffered = 0, lastPercent = -1;
+    const flush = async () => {
+      if (buffer && buffered) {
+        const bytes = buffer.subarray(0, buffered);
+        buffered = 0;
+        await this.io.write(file, bytes, {mode: "append"});
+      }
+    };
     try {
       while (true) {
         const {done, value} = await reader.read();
         if (done) break;
         if (offset + value.length > manifest.size) throw new Error("下载内容超过发布清单大小");
-        await this.io.write(file, value, {mode: "append"});
+        if (buffer) {
+          let at = 0;
+          while (at < value.length) {
+            const count = Math.min(buffer.length - buffered, value.length - at);
+            buffer.set(value.subarray(at, at + count), buffered);
+            buffered += count;
+            at += count;
+            if (buffered === buffer.length) await flush();
+          }
+        } else {
+          await this.io.write(file, value, {mode: "append"});
+        }
         offset += value.length;
-        this.notify(`下载引擎：${Math.floor(offset / manifest.size * 100)}%（${Math.round(offset / 1048576)} / ${Math.round(manifest.size / 1048576)} MB）`);
+        const percent = Math.floor(offset / manifest.size * 100);
+        if (!buffer || percent !== lastPercent) {
+          this.notify(`下载引擎：${percent}%（${Math.round(offset / 1048576)} / ${Math.round(manifest.size / 1048576)} MB）`);
+          lastPercent = percent;
+        }
       }
-    } finally { reader.releaseLock(); }
+    } finally {
+      // Preserve the received prefix on a network interruption for Range resume.
+      try { await flush(); } finally { reader.releaseLock(); }
+    }
   }
 }
 

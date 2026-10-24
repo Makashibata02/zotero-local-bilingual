@@ -75,6 +75,44 @@ function createRuntimeNative(context) {
       const zip = Cc["@mozilla.org/libjar/zip-reader;1"].createInstance(Ci.nsIZipReader);
       zip.open(file(archive));
       try {
+        if (Services.appinfo.OS === "Darwin") {
+          // nsIZipReader can write directly on macOS. Avoid copying every byte
+          // into a JS number array and reopening the file for every 512 KB.
+          const entries = zip.findEntries(null), checked = [];
+          let total = 0;
+          while (entries.hasMore()) {
+            const name = entries.getNext(), entry = zip.getEntry(name);
+            if (!safeEntry(name)) throw new Error("ZIP 含不安全路径，未解压");
+            if ((entry.permissions & 0o170000) === 0o120000) throw new Error("引擎 ZIP 含符号链接，未安装");
+            total += entry.realSize;
+            if (total > maximum) throw new Error("ZIP 解压体积超过清单");
+            checked.push({name, directory: entry.isDirectory, size: entry.realSize});
+          }
+          const directories = new Set([destination]);
+          let written = 0, lastPercent = -1, lastYield = Date.now();
+          for (const entry of checked) {
+            const target = paths().join(destination, ...entry.name.replace(/\/$/, "").split("/"));
+            const directory = entry.directory ? target : paths().parent(target);
+            if (!directories.has(directory)) {
+              await io().makeDirectory(directory, {ignoreExisting: true, permissions: 0o700});
+              directories.add(directory);
+            }
+            if (!entry.directory) {
+              try {
+                const output = file(target);
+                zip.extract(entry.name, output);
+                output.permissions = entry.name === "python/bin/python3.12" ? 0o700 : 0o600;
+              } catch (error) {throw new Error(`引擎文件解压失败：${entry.name}：${String(error)}`);}
+            }
+            written += entry.size;
+            const percent = Math.min(99, Math.floor(written / (maximum / 1.05) * 100));
+            if (percent !== lastPercent) {lastPercent = percent; progress(percent);}
+            // Native extraction is synchronous; yield between files for repaint
+            // and cancellation/other Zotero work, without a timer per tiny file.
+            if (Date.now() - lastYield >= 16) {await Zotero.Promise.delay(0); lastYield = Date.now();}
+          }
+          return;
+        }
         const entries = zip.findEntries(null);
         let total = 0, lastPercent = -1;
         while (entries.hasMore()) {

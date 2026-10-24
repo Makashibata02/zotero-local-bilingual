@@ -1,17 +1,17 @@
-# Mac 安装与试用 · 1.1.0 预览版
+# Mac 安装与试用 · 1.1.1
 
 适用：macOS 14 Sonoma 及以上，Apple Silicon（M 系列）或 Intel，Zotero 7–10。
 
-本版已完成 Mac 平台代码和候选包，尚未在 Mac 上运行验证。当前只交付本地文件，不是已发布的正式 Mac Release；在线安装地址需等发布后才可用，请先离线导入。候选包没有项目方的 Apple Developer ID 签名或公证，系统安全策略可能阻止启动。
+本版已完成 Apple Silicon / Zotero 10.0.6 的原生界面和隔离运行验证，用户已确认适配可用；Intel 包完成文件与资源校验，尚待 Intel 实机验证。当前交付用于上传的本地文件；在线安装地址需等对应 Release 发布后才可用，请先离线导入。候选包没有项目方的 Apple Developer ID 签名或公证，系统安全策略可能阻止启动。
 
 ## 需要哪个文件
 
-所有平台安装相同的 `zotero-local-bilingual-1.1.0.xpi`，引擎按架构选择：
+所有平台安装相同的 `zotero-local-bilingual-1.1.1.xpi`，引擎按架构选择：
 
 | 电脑／Zotero 运行方式 | 离线引擎 |
 |---|---|
-| M1、M2、M3、M4 等 Apple Silicon，原生 Zotero | `zlb-engine-1.1.0-macos-arm64.zip` |
-| Intel Mac，或通过 Rosetta 运行的 Intel Zotero | `zlb-engine-1.1.0-macos-x64.zip` |
+| M1、M2、M3、M4 等 Apple Silicon，原生 Zotero | `zlb-engine-1.1.1-macos-arm64.zip` |
+| Intel Mac，或通过 Rosetta 运行的 Intel Zotero | `zlb-engine-1.1.1-macos-x64.zip` |
 
 建议在 Apple Silicon 上使用原生 Zotero。插件按 Zotero 自身的架构选择，错选 ZIP 会因大小／哈希校验失败而停止。不要导入 Windows 引擎，也无需先解压 ZIP。
 
@@ -28,7 +28,7 @@
 ## 故障与数据位置
 
 - 数据：`~/Library/Application Support/ZoteroLocalBilingual`；Key 在 macOS 钥匙串，不在该目录的配置 JSON 中。
-- 提示哈希不符：确认版本为 1.1.0 且架构匹配，重新取得对应 ZIP。
+- 提示哈希不符：确认版本为 1.1.1 且架构匹配，重新取得对应 ZIP。
 - 系统提示无法验证开发者或阻止 Python：停止本次安装，保留提示原文用于验收；本插件不自动绕过系统安全策略，不建议关闭 Gatekeeper。开发者签名／公证分发仍待完成。
 - 钥匙串被锁定或拒绝访问：在系统“钥匙串访问”中确认登录钥匙串状态，再重新点击保存；免费模式无需保存模型 Key。
 - 旧后台仍有任务：等待结束后重试，插件不会强制停止正在翻译的工作进程。
@@ -36,7 +36,7 @@
 
 ## Mac 实机验收表
 
-下列项目尚待在 Apple Silicon 和 Intel 上分别完成，打包或 Windows 测试不能代替这些检查：
+Apple Silicon 已完成的检查及测量见[修复验证记录](macOS适配修复验证.md)。下列完整发布验收表仍供各架构维护者使用；其中钥匙串拒绝授权、真实免费接口、签名分发及多种复杂论文不由模拟测试覆盖，Intel 尚待整体验证：
 
 - 从全新环境导入 ZIP，中文／空格用户路径可用，系统安全提示可处理。
 - 资源自检通过；服务只启动一份，空闲退出和升级切换正常。

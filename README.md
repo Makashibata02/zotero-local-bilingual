@@ -1,10 +1,10 @@
 # Local Bilingual PDF · 本地双语 PDF
 
-[English](README.en.md) · [下载 1.0](https://github.com/Makashibata02/zotero-local-bilingual/releases/tag/v1.0.0) · [使用手册](docs/使用手册.md)
+[English](README.en.md) · [下载 1.1.1](https://github.com/Makashibata02/zotero-local-bilingual/releases/tag/v1.1.1) · [使用手册](docs/使用手册.md)
 
 在 Zotero 中翻译论文和讲义 PDF，保留原文页面、图片与数学对象，生成便于对照阅读的双语 PDF 或独立译文 PDF。可以使用免 Key 的免费翻译服务，也可以配置自己的大模型 API。
 
-运行环境：**Windows 10/11 x64**。安装包声明支持 Zotero 7–10；其他操作系统暂不支持自动引擎安装。
+运行环境：**Windows 10/11 x64、macOS 14+（Apple Silicon / Intel）**。共用一个 XPI，插件按平台选择引擎；安装包声明支持 Zotero 7–10。本轮 Mac 实机验证为 Apple Silicon + Zotero 10.0.6，Intel 候选尚待实机验收。
 
 ## 功能
 
@@ -21,14 +21,14 @@
 
 ## 安装与开始翻译
 
-1. 从 [Release](https://github.com/Makashibata02/zotero-local-bilingual/releases/tag/v1.0.0) 下载 `zotero-local-bilingual-1.0.0.xpi`。在 Zotero“工具 → 插件 → 从文件安装插件”中选择它，然后重启 Zotero。
+1. 从 [Release](https://github.com/Makashibata02/zotero-local-bilingual/releases/tag/v1.1.1) 下载 `zotero-local-bilingual-1.1.1.xpi`。在 Zotero“工具 → 插件 → 从文件安装插件”中选择它，然后重启 Zotero。
 2. 打开“设置 → 本地双语 PDF”，点击顶部的**在线下载并安装**。插件会直接从本项目 GitHub Release 下载匹配引擎、校验并安装，无需手动下载 ZIP 或配置 GitHub Token。
 3. 选择免费服务，或填写自己的 API 地址、模型名称和 Key，点击**保存并测试**，按按钮下方的提示完成配置。
 4. 选中 PDF 或文献条目，右键选择**翻译 PDF…**，确认文件、服务、目标语言、输出方式和排队设置，点击**确认并入队**。
 
 ![引擎安装界面示意](docs/images/settings-100.png)
 
-引擎下载约 **415 MB**，安装后约 **884 MB**。在线安装支持进度显示、断点续传和 SHA-256 校验。**备用离线安装**：GitHub 下载受限时，从同一 Release 取得 `zlb-engine-1.0.0-windows-x64.zip`，在设置顶部选择“离线导入”。离线导入指安装环境的方式，翻译仍需连接所选服务。
+引擎下载约 **415–430 MiB**，安装后约 **884–933 MiB**，随平台不同。在线安装支持进度显示、断点续传和 SHA-256 校验。**备用离线安装**：GitHub 下载受限时，从同一 Release 取得匹配平台的 `zlb-engine-1.1.1-windows-x64.zip`、`zlb-engine-1.1.1-macos-arm64.zip` 或 `zlb-engine-1.1.1-macos-x64.zip`，在设置顶部选择“离线导入”。离线导入指安装环境的方式，翻译仍需连接所选服务。
 
 安装引擎不调用翻译服务。首次配置会用一页 PDF 检查完整流程，成功后保存只检查一次服务连接；使用自己的 API 时会产生少量用量，按钮旁有说明。安装和配置的结果显示在对应按钮下方。
 
@@ -74,7 +74,7 @@ API 任务默认每篇累计上限为 **100 万 tokens／1000 次请求**；免�
 
 ## 数据与隐私
 
-API Key 保存在 **Windows 凭据管理器**。配置、任务、产物和缓存保存在本机 `%LOCALAPPDATA%\ZoteroLocalBilingual`，不属于源码仓库。后台服务只监听本机回环地址。
+API Key 保存在 **Windows 凭据管理器或 macOS 钥匙串**。配置、任务、产物和缓存保存在 Windows 的 `%LOCALAPPDATA%\ZoteroLocalBilingual` 或 Mac 的 `~/Library/Application Support/ZoteroLocalBilingual`，不属于源码仓库。后台服务只监听本机回环地址。
 
 需要翻译的文本会发送给你选择的服务。免费翻译同样使用远程接口，本地引擎负责 PDF 提取、排版与任务管理。使用敏感文档前，请确认所选服务的数据政策。
 

@@ -102,6 +102,17 @@ function setStatus(document: Document, text: string, id = "zlb-test-status"): vo
   if (status) status.textContent = text;
 }
 
+function prepareMacMenus(document: Document): void {
+  // Gecko renders HTML select popups with XUL menuitems in these chrome windows.
+  // Unlike the preferences host, standalone HTML windows have no menu theme.
+  if (!Zotero.isMac || document.getElementById("zlb-mac-menu-style")) return;
+  const link = document.createElementNS("http://www.w3.org/1999/xhtml", "link") as HTMLLinkElement;
+  link.id = "zlb-mac-menu-style";
+  link.rel = "stylesheet";
+  link.href = "chrome://local-bilingual/content/macos-menus.css";
+  document.head.append(link);
+}
+
 let workbenchWindow: any;
 let engineStatus = "等待用户开始测试或翻译";
 async function ensureEngineReady(feedback: (message: string) => void = () => {}): Promise<void> {
@@ -531,6 +542,7 @@ const plugin = {
     },
     onLoad(window:any) {
       const args=window.arguments[0], d=window.document;
+      prepareMacMenus(d);
       args.ready=true;
       const models=args.profiles.map((p:any)=>({value:p.id,title:p.name+(p.model ? " · "+p.model : "")+(p.is_default ? "（默认）" : ""),provider:p.provider,disabled:p.provider==="openai" && p.has_api_key===false}));
       for (const [provider,id,name] of [["bing","free-bing","免费 Bing（实验性）"],["tencent","free-tencent","免费腾讯（实验性）"]]) {
@@ -703,6 +715,7 @@ const plugin = {
       },
     async onLoad(window: any) {
       if (window._zlbLoaded || !window.document.getElementById("zlb-jobs")) return;
+      prepareMacMenus(window.document);
       window._zlbLoaded=true;
       window.document.getElementById("zlb-engine-status").textContent = engineStatus;
       if (window._zlbShowCurrent) plugin.workbench.showCurrent(window);
@@ -941,6 +954,8 @@ const plugin = {
       } catch (error) {setStatus(document, `保存失败：${String(error)}`, "zlb-options-status");}
     },
     onLoad(document: Document) {
+      // Scope the native-theme reset to this pane and macOS only.
+      if (Zotero.isMac) document.getElementById("zlb-settings")?.setAttribute("data-platform", "macos");
       setStatus(document,`本地双语 PDF ${DISPLAY_VERSION} · 引擎由插件自动准备与启动。翻译前可选择语言与输出。`,"zlb-version");
       void api("/v1/health").then(r=>r.json()).then(health=>{
         setStatus(document,`后台版本 ${health.version}${health.version===DISPLAY_VERSION ? "（匹配）" : "（版本不匹配，请导入匹配引擎）"}`,"zlb-runtime-version");

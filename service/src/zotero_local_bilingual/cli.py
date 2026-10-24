@@ -39,10 +39,10 @@ def main() -> None:
         if not args.runtime_root:
             raise RuntimeError("缺少引擎目录")
         result = verify_resources(Path(args.runtime_root))
-        from babeldoc.docvision.doclayout import DocLayoutModel
+        from .layout_model import load_layout_model
         from .layout_compat import install_babeldoc_layout_patch
         install_babeldoc_layout_patch()
-        DocLayoutModel.load_onnx()
+        load_layout_model()
         import tiktoken
         tiktoken.encoding_for_model("gpt-4o")
         print(json.dumps({**result, "version": __version__, "protocol_version": 2}))

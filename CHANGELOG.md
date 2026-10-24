@@ -1,5 +1,13 @@
 # 更新记录
 
+## 1.1.1
+
+- 修复 Mac 设置页按钮文字偏移，以及确认窗口、工作台下拉菜单选项重复和错位。
+- 减少 Mac 引擎下载的写盘次数，使用原生解压并避免重复创建目录。
+- 为 Mac 版面模型启用 CoreML 编译缓存，缩短重复启动时的模型加载时间。
+- 保持共用 XPI，分别提供 Windows x64、Apple Silicon 和 Intel Mac 引擎。
+- Windows 保留原有界面和引擎执行路径；补充 Mac 原生菜单、键盘、窄窗口及缩放回归检查。
+
 ## 1.1.0（macOS 预览）
 
 - 新增 Apple Silicon 与 Intel Mac 的引擎选择、Application Support 目录和后台启动。

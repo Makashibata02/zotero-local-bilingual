@@ -34,18 +34,42 @@ test('Mac version floor rejects older systems before downloading an engine',()=>
   const h=native('Darwin','aarch64-gcc3');assert.doesNotThrow(()=>h.api.checkSystem());
   h.services.sysinfo.getProperty=()=> '22.6.0';assert.throws(()=>h.api.checkSystem(),/macOS 14/);
 });
-test('streaming Mac ZIP extraction restores interpreter permissions and refuses symlinks',async()=>{
+test('native Mac ZIP extraction restores interpreter permissions and refuses symlinks',async()=>{
   const modes=[];let active=0;let symbolic=false;
   const names=['python/bin/python3.12','python/lib/libpython3.12.dylib','assets/font.ttf'];
-  const zip={open:()=>{},close:()=>{},findEntries:()=>({hasMore:()=>active<names.length,getNext:()=>names[active++]}),getEntry:()=>({realSize:1,permissions:symbolic?0o120777:0o100644,isDirectory:false}),getInputStream:()=>({})};
+  const extracted=[];
+  const zip={open:()=>{},close:()=>{},extract:(name)=>extracted.push(name),findEntries:()=>({hasMore:()=>active<names.length,getNext:()=>names[active++]}),getEntry:()=>({realSize:1,permissions:symbolic?0o120777:0o100644,isDirectory:false}),getInputStream:()=>{throw Error('Mac must not stream bytes through JS');}};
   const sandbox={Components:{classes:{
-    '@mozilla.org/file/local;1':{createInstance:()=>({initWithPath:()=>{}})},
+    '@mozilla.org/file/local;1':{createInstance:()=>({initWithPath(p){this.path=p;},set permissions(m){modes.push([this.path,m]);}})},
     '@mozilla.org/libjar/zip-reader;1':{createInstance:()=>zip},
     '@mozilla.org/binaryinputstream;1':{createInstance:()=>{let unread=true;return{setInputStream:()=>{},available:()=>unread?1:0,readByteArray:()=>{unread=false;return[0];},close:()=>{}};}}
-  },interfaces:{}},Services:{appinfo:{OS:'Darwin',XPCOMABI:'aarch64-gcc3'}},ChromeUtils:{importESModule:()=>({Subprocess:{}})}};
+  },interfaces:{}},Services:{appinfo:{OS:'Darwin',XPCOMABI:'aarch64-gcc3'}},Zotero:{Promise:{delay:async()=>{}}},ChromeUtils:{importESModule:()=>({Subprocess:{}})}};
   vm.runInNewContext(source,sandbox);
   const api=sandbox.createRuntimeNative({PathUtils:{join:(...s)=>s.join('/'),parent:p=>p.slice(0,p.lastIndexOf('/'))},IOUtils:{makeDirectory:async()=>{},write:async()=>{},setPermissions:async(p,m)=>modes.push([p,m])}});
   await api.extract('/test.zip','/stage',()=>true,100);
   assert.deepEqual(modes,[['/stage/python/bin/python3.12',0o700],['/stage/python/lib/libpython3.12.dylib',0o600],['/stage/assets/font.ttf',0o600]]);
-  active=0;symbolic=true;await assert.rejects(api.extract('/test.zip','/stage',()=>true,100),/符号链接/);
+  assert.deepEqual(extracted,names);
+  active=0;symbolic=true;extracted.length=0;await assert.rejects(api.extract('/test.zip','/stage',()=>true,100),/符号链接/);
+  assert.deepEqual(extracted,[]);
+  active=0;symbolic=false;await assert.rejects(api.extract('/test.zip','/stage',name=>!name.includes('font'),100),/不安全路径/);
+  assert.deepEqual(extracted,[],'all paths are checked before any native extraction');
+  active=0;await assert.rejects(api.extract('/test.zip','/stage',()=>true,2),/体积/);
+  assert.deepEqual(extracted,[]);
+});
+
+test('Windows keeps streaming extraction for long paths and never uses native extract',async()=>{
+  let active=false;const writes=[];
+  const zip={open(){},close(){},findEntries:()=>({hasMore:()=>!active,getNext:()=>{active=true;return 'python/python.exe';}}),
+    getEntry:()=>({realSize:3,permissions:0o100644,isDirectory:false}),getInputStream:()=>({}),
+    extract(){throw Error('Windows must retain streaming extraction');}};
+  const sandbox={Components:{classes:{
+    '@mozilla.org/file/local;1':{createInstance:()=>({initWithPath(){}})},
+    '@mozilla.org/libjar/zip-reader;1':{createInstance:()=>zip},
+    '@mozilla.org/binaryinputstream;1':{createInstance:()=>{let unread=true;return{setInputStream(){},available:()=>unread?3:0,readByteArray:()=>{unread=false;return[1,2,3];},close(){}};}}
+  },interfaces:{}},Services:{appinfo:{OS:'WINNT',XPCOMABI:'x86_64-msvc'}},ChromeUtils:{importESModule:()=>({Subprocess:{}})}};
+  vm.runInNewContext(source,sandbox);
+  const api=sandbox.createRuntimeNative({PathUtils:{join:(...s)=>s.join('/'),parent:p=>p.slice(0,p.lastIndexOf('/'))},
+    IOUtils:{makeDirectory:async()=>{},write:async(p,bytes,opts)=>writes.push({path:p,bytes:[...bytes],mode:opts?.mode}),setPermissions:async()=>{throw Error('Windows permissions must be unchanged');}}});
+  await api.extract('/test.zip','/long/中文/stage',()=>true,100);
+  assert.deepEqual(writes,[{path:'/long/中文/stage/python/python.exe',bytes:[],mode:undefined},{path:'/long/中文/stage/python/python.exe',bytes:[1,2,3],mode:'append'}]);
 });

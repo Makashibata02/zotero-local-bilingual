@@ -1,40 +1,41 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "protocol_version": 2,
   "engines": {
     "macos-arm64": {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "protocol_version": 2,
       "platform": "macos-arm64",
-      "filename": "zlb-engine-1.1.0-macos-arm64.zip",
+      "filename": "zlb-engine-1.1.1-macos-arm64.zip",
       "minimum_os": "14.0",
-      "native_verified": false,
-      "url": "https://github.com/Makashibata02/zotero-local-bilingual/releases/download/v1.1.0/zlb-engine-1.1.0-macos-arm64.zip",
-      "size": 447086707,
-      "installed_size": 977848820,
-      "sha256": "c6c924c000af8ec0c8208304d9047d0d7a20201b4683e27716ff8aafdd83fe24"
+      "native_verified": true,
+      "url": "https://github.com/Makashibata02/zotero-local-bilingual/releases/download/v1.1.1/zlb-engine-1.1.1-macos-arm64.zip",
+      "size": 446858037,
+      "installed_size": 977849294,
+      "sha256": "0d8273ea0ce59cff9f0f99898f4f09d19ea6a440398997ae70809e08885a48ed"
     },
     "macos-x64": {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "protocol_version": 2,
       "platform": "macos-x64",
-      "filename": "zlb-engine-1.1.0-macos-x64.zip",
+      "filename": "zlb-engine-1.1.1-macos-x64.zip",
       "minimum_os": "14.0",
       "native_verified": false,
-      "url": "https://github.com/Makashibata02/zotero-local-bilingual/releases/download/v1.1.0/zlb-engine-1.1.0-macos-x64.zip",
-      "size": 442603511,
-      "installed_size": 964870184,
-      "sha256": "2e6158e8b58d88e84ae0198fa4bea516052b1c9872bdf5d7a593f796ed7eb14c"
+      "url": "https://github.com/Makashibata02/zotero-local-bilingual/releases/download/v1.1.1/zlb-engine-1.1.1-macos-x64.zip",
+      "size": 442376642,
+      "installed_size": 964870658,
+      "sha256": "d766a696e38622ac185de9799fdca6b08cb475c1c4b8d16a40d1b4404113474c"
     },
     "windows-x64": {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "protocol_version": 2,
       "platform": "windows-x64",
-      "filename": "zlb-engine-1.1.0-windows-x64.zip",
-      "url": "https://github.com/Makashibata02/zotero-local-bilingual/releases/download/v1.1.0/zlb-engine-1.1.0-windows-x64.zip",
-      "size": 434830809,
-      "installed_size": 926690277,
-      "sha256": "bcae67c973067c004288f3d8577c92c41037726ea45ebdbd807a67af5d296532"
+      "filename": "zlb-engine-1.1.1-windows-x64.zip",
+      "url": "https://github.com/Makashibata02/zotero-local-bilingual/releases/download/v1.1.1/zlb-engine-1.1.1-windows-x64.zip",
+      "size": 434832113,
+      "installed_size": 926690751,
+      "sha256": "eae4069d5b9cf68cee30a3edc2cd0957ba87a60fe6643c38e1d2b4a5f68ed9d9",
+      "native_verified": false
     }
   }
 }
